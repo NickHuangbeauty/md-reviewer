@@ -1,6 +1,7 @@
 # MD Reviewer - Markdown 文檔檢閱工具
 
 產險 RAG 專用的 Markdown/HTML 文檔檢閱工具，支援：
+
 - 預覽編輯
 - 表格編輯（含 colspan/rowspan）
 - **智能差異比對**（使用 [jsdiff](https://github.com/kpdecker/jsdiff) 開源庫）
@@ -9,7 +10,9 @@
 ## 技術改進
 
 ### jsdiff 整合
+
 本專案使用 `jsdiff` 開源庫進行差異比對，相較於自建算法有以下優勢：
+
 - **自動忽略空白差異**：`diffTrimmedLines` 忽略行首尾空白
 - **智能修改偵測**：`diffWords` 計算相似度，區分「修改」和「刪除+新增」
 - **Markdown 表格正規化**：自動處理 `|||` 和 `| | |` 格式差異
@@ -27,11 +30,13 @@
 ### 步驟 2：上傳檔案
 
 方法 A - 網頁上傳（最簡單）：
+
 1. 在新建的倉庫頁面，點擊 `uploading an existing file`
 2. 把這個資料夾裡的所有檔案拖曳上傳
 3. 點擊 `Commit changes`
 
 方法 B - 使用 Git 命令：
+
 ```bash
 git init
 git add .
@@ -53,6 +58,7 @@ git push -u origin main
 在倉庫中建立 `.github/workflows/deploy.yml`（我已經準備好了）
 
 部署完成後，您的網站會在：
+
 ```
 https://您的用戶名.github.io/md-reviewer/
 ```
@@ -75,3 +81,17 @@ npm run build
 - React 18
 - Vite
 - Lucide Icons
+
+## 授權聲明
+
+本專案使用 MIT 授權。
+
+### 第三方套件授權
+
+| 套件                                         | 授權         | 用途           |
+| -------------------------------------------- | ------------ | -------------- |
+| [jsdiff](https://github.com/kpdecker/jsdiff) | BSD-3-Clause | 差異比對演算法 |
+| [Lucide Icons](https://lucide.dev)           | ISC          | 圖示           |
+| [React](https://react.dev)                   | MIT          | UI 框架        |
+
+完整授權文件請參閱 `LICENSES/` 資料夾。
