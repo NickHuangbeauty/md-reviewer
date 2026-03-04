@@ -1,0 +1,102 @@
+name: Canary Health Check
+
+on:
+  schedule:
+    # Daily at 08:00 UTC (16:00 Taiwan time)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL to test (default: production)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  engine-test:
+    name: Diff Engine Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run engine tests
+        run: node tests/diff-engine.test.mjs
+
+  smoke-production:
+    name: Smoke Test (Production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: node tests/smoke.mjs
+        env:
+          TARGET_URL: ${{ inputs.target_url || 'https://NickHuangbeauty.github.io/md-reviewer/' }}
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-production-screenshots
+          path: tests/screenshots/
+          retention-days: 7
+
+  smoke-canary:
+    name: Smoke Test (Canary)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run canary smoke tests
+        run: node tests/smoke.mjs
+        env:
+          TARGET_URL: 'https://NickHuangbeauty.github.io/md-reviewer/canary/'
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-canary-screenshots
+          path: tests/screenshots/
+          retention-days: 7
