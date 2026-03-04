@@ -239,6 +239,9 @@ body {
   background: linear-gradient(180deg, rgba(96,165,250,0.15) 0%, rgba(96,165,250,0.05) 50%, rgba(96,165,250,0.15) 100%);
 }
 
+/* Faded context lines at fold boundaries */
+.diff-faded { opacity: 0.35; transition: opacity 0.3s; }
+
 /* Revealed lines — expanded from fold, subtle tinted background */
 .diff-line.diff-revealed,
 .diff-split-row.diff-revealed {

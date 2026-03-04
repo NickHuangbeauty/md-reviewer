@@ -2226,7 +2226,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
   
   // Render a single unified row
   const renderUnifiedRow = (e, i) => (
-    <div key={startIndex + i} className={'diff-line diff-' + e.type + (e._revealed ? ' diff-revealed' : '')} style={{ height: useVirtual ? ROW_HEIGHT : undefined, opacity: e._fade ? 0.35 : undefined, transition: e._fade ? 'opacity 0.3s' : undefined }}>
+    <div key={startIndex + i} className={'diff-line diff-' + e.type + (e._revealed ? ' diff-revealed' : '') + (e._fade ? ' diff-faded' : '')} style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
       <span className="diff-gutter-old">{e.type === 'add' ? '' : (e.oldIdx != null ? e.oldIdx + 1 : '')}</span>
       <span className="diff-gutter-new">{e.type === 'del' ? '' : (e.newIdx != null ? e.newIdx + 1 : '')}</span>
       <span className="diff-sign">{e.type === 'add' ? '+' : e.type === 'del' ? '−' : e.type === 'modify' ? '~' : ' '}</span>
@@ -2245,7 +2245,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
       return '';
     };
     return (
-      <div key={startIndex + i} className={'diff-split-row' + (p._revealed ? ' diff-revealed' : '')} style={{ height: useVirtual ? ROW_HEIGHT : undefined, opacity: p._fade ? 0.35 : undefined, transition: p._fade ? 'opacity 0.3s' : undefined }}>
+      <div key={startIndex + i} className={'diff-split-row' + (p._revealed ? ' diff-revealed' : '') + (p._fade ? ' diff-faded' : '')} style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
         <div className={'diff-split-cell diff-split-old' + cellClass('old')}>
           <span className="diff-gutter-s">{p.oldIdx != null ? p.oldIdx + 1 : ''}</span>
           <span className="diff-content-s">{p.old != null ? p.old : ''}</span>
@@ -2737,9 +2737,9 @@ function buildFoldedItems(items, expandedFolds) {
         } else {
           // Collapsed: before context (last faded) + fold + after context (first faded)
           for (let k = eqStart; k < eqStart + CONTEXT_LINES - 1; k++) result.push(items[k]);
-          result.push({ ...items[eqStart + CONTEXT_LINES - 1], _fade: 'out' });
+          result.push({ ...items[eqStart + CONTEXT_LINES - 1], _fade: true });
           result.push({ type: 'fold', foldId: currentFoldId, count: hiddenCount });
-          result.push({ ...items[i - CONTEXT_LINES], _fade: 'in' });
+          result.push({ ...items[i - CONTEXT_LINES], _fade: true });
           for (let k = i - CONTEXT_LINES + 1; k < i; k++) result.push(items[k]);
         }
       } else {
