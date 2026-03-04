@@ -43,6 +43,8 @@ vite.config.js.timestamp-*.mjs
 coverage/
 test_sample.md
 screenshots/
+test-data-scenarios/
+.playwright-mcp/
 
 # Editor directories and files
 *.suo

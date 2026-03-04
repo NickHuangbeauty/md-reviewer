@@ -99,15 +99,30 @@ function splitMdBlocks(text) {
 
 function joinMdBlocks(blocks) { return blocks.join('\n\n'); }
 
+/* ===== TABLE CELL PIPE ESCAPE/UNESCAPE ===== */
+const PIPE_PLACEHOLDER = '\x00PIPE\x00';
+const PIPE_PLACEHOLDER_RE = new RegExp(PIPE_PLACEHOLDER, 'g');
+
+/** Parse a markdown table row, correctly handling escaped \| in cell content */
+function parseTableRow(l) {
+  const safe = l.replace(/\\\|/g, PIPE_PLACEHOLDER);
+  const parts = safe.split('|').map(c => c.replace(PIPE_PLACEHOLDER_RE, '|').trim());
+  if (parts.length && parts[0] === '') parts.shift();
+  if (parts.length && parts[parts.length - 1] === '') parts.pop();
+  return parts;
+}
+
+/** Escape literal | in cell content for markdown table output */
+function escapePipe(s) { return s.replace(/\|/g, '\\|'); }
+
 /* ===== PARSERS ===== */
 function parseMarkdownTable(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   if (lines.length < 2 || !lines[0].includes('|')) return null;
-  const parseRow = (l) => l.split('|').map(c => c.trim()).filter((c, i, a) => i > 0 && i < a.length);
   const rows = []; let hdr = false;
   for (let i = 0; i < lines.length; i++) {
     if (/^\|?[\s\-:]+\|[\s\-:|]+\|?$/.test(lines[i].trim())) { hdr = true; continue; }
-    const cells = parseRow(lines[i]);
+    const cells = parseTableRow(lines[i]);
     if (cells.length) rows.push({ cells, isHeader: !hdr && i === 0 });
   }
   if (!rows.length) return null;
@@ -522,8 +537,6 @@ function MarkPopup({ mark, position, onSave, onDelete, onClose }) {
 function parseMdTableToGrid(raw) {
   const lines = raw.trim().split('\n').filter(l => l.trim());
   if (!lines.length || !lines[0].includes('|')) return null;
-  const parseRow = (l) => l.split('|').map(c => c.trim()).filter((c, i, a) => i > 0 && i < a.length);
-
   // 先檢查原始文本是否有分隔行（只有有分隔行時，第一行才是 header）
   const hasSeparatorLine = lines.some(l => /^\|?[\s\-:]+\|[\s\-:|]+\|?$/.test(l.trim()));
 
@@ -534,7 +547,7 @@ function parseMdTableToGrid(raw) {
   let passedSeparator = false;
   for (let i = 0; i < lines.length; i++) {
     if (/^\|?[\s\-:]+\|[\s\-:|]+\|?$/.test(lines[i].trim())) { passedSeparator = true; continue; }
-    const cells = parseRow(lines[i]);
+    const cells = parseTableRow(lines[i]);
     // 只有在原始文本有分隔行時，第一行才標記為 header
     // 這樣可以避免沒有分隔行的表格（如 ||| 格式）被自動加上分隔行
     if (cells.length) grid.push({ cells, isHeader: hasSeparatorLine && !passedSeparator && grid.length === 0 });
@@ -681,11 +694,9 @@ function gridToMdTable(grid) {
   grid.forEach((row, ri) => {
     let cells;
     if (isCompact) {
-      // 緊湊格式：不加空格，空 cell 就是空字串
-      cells = row.cells.map(c => c || '');
+      cells = row.cells.map(c => escapePipe(c || ''));
     } else {
-      // 標準格式：前後加空格
-      cells = row.cells.map(c => c ? ' ' + c + ' ' : '   ');
+      cells = row.cells.map(c => c ? ' ' + escapePipe(c) + ' ' : '   ');
     }
     while (cells.length < colCount) cells.push(isCompact ? '' : '   ');
     lines.push('|' + cells.join('|') + '|');
@@ -2951,7 +2962,6 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
       {/* Legend */}
       {!isIdentical && (
         <div className="diff-legend">
-          <span className="diff-legend-item"><span className="diff-legend-swatch swatch-eq" />未變更</span>
           <span className="diff-legend-item"><span className="diff-legend-swatch swatch-add" />++ 新增行</span>
           <span className="diff-legend-item"><span className="diff-legend-swatch swatch-del" />−− 刪除行</span>
           <span className="diff-legend-item"><span className="diff-legend-swatch swatch-mod" />~~ 微調行</span>
@@ -3643,7 +3653,6 @@ export default function MdReviewer() {
     .diff-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);font-family:var(--font)}
     .diff-legend-swatch{width:14px;height:14px;border-radius:3px;border:1.5px solid;flex-shrink:0}
     .diff-legend-tip{color:var(--text3);font-style:italic;margin-left:auto}
-    .swatch-eq{background:#dcfce7;border-color:#86efac}
     .swatch-add{background:#bbf7d0;border-color:#4ade80}
     .swatch-del{background:#fecaca;border-color:#f87171}
     .swatch-mod{background:#fef3c7;border-color:#fbbf24}
