@@ -26,7 +26,7 @@ const IS_CANARY = !!import.meta.env.VITE_CANARY;
 // Set this to your GitHub Gist raw URL to enable remote flag control.
 // Example: 'https://gist.githubusercontent.com/<user>/<gist-id>/raw/md-reviewer-flags.json'
 // JSON format: { "new-diff-engine": true, "dark-mode": true, "dashboard": false }
-const REMOTE_FLAGS_URL = null;
+const REMOTE_FLAGS_URL = 'https://gist.githubusercontent.com/NickHuangbeauty/6967bfb280d66b769dc41d4c9a5f81c5/raw/md-reviewer-flags.json';
 
 // ===== Internal State =====
 let _remoteFlags = null;
@@ -40,12 +40,13 @@ function notifyListeners() {
 /**
  * Fetch remote flags from GitHub Gist (once per session).
  * Silently falls back to defaults on failure.
+ * Works in both production and canary — Gist overrides all defaults.
  */
 export async function fetchRemoteFlags() {
-  if (!REMOTE_FLAGS_URL || IS_CANARY) return;
+  if (!REMOTE_FLAGS_URL) return;
   if (_fetchPromise) return _fetchPromise;
 
-  _fetchPromise = fetch(REMOTE_FLAGS_URL)
+  _fetchPromise = fetch(REMOTE_FLAGS_URL, { cache: 'no-cache' })
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (data && typeof data === 'object') {
@@ -60,11 +61,12 @@ export async function fetchRemoteFlags() {
 
 /**
  * Get a single flag value (synchronous).
- * Priority: Canary (all true) > Remote Gist > Defaults
+ * Priority: Remote Gist > Canary (all true) > Defaults (all false)
+ * This allows Gist to override even canary defaults for consistent testing.
  */
 export function getFlag(name) {
-  if (IS_CANARY) return true;
   if (_remoteFlags && name in _remoteFlags) return !!_remoteFlags[name];
+  if (IS_CANARY) return true;
   return FLAG_DEFAULTS[name] ?? false;
 }
 

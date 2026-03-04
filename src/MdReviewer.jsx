@@ -2187,23 +2187,25 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
   
   const ROW_HEIGHT = 24; // pixels per row
   const BUFFER = 10; // extra rows to render above/below viewport
+  const VIRTUAL_THRESHOLD = 500;
+  const useVirtual = items.length >= VIRTUAL_THRESHOLD;
   
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-    
+    if (!container || !useVirtual) return;
+
     const updateHeight = () => setContainerHeight(container.clientHeight);
     updateHeight();
-    
+
     const handleScroll = () => setScrollTop(container.scrollTop);
     container.addEventListener('scroll', handleScroll);
     window.addEventListener('resize', updateHeight);
-    
+
     return () => {
       container.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', updateHeight);
     };
-  }, []);
+  }, [useVirtual]);
   
   const totalHeight = items.length * ROW_HEIGHT;
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER);
@@ -2213,7 +2215,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
   
   // Render a single unified row
   const renderUnifiedRow = (e, i) => (
-    <div key={startIndex + i} className={'diff-line diff-' + e.type} style={{ height: ROW_HEIGHT }}>
+    <div key={startIndex + i} className={'diff-line diff-' + e.type} style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
       <span className="diff-gutter-old">{e.type === 'add' ? '' : (e.oldIdx != null ? e.oldIdx + 1 : '')}</span>
       <span className="diff-gutter-new">{e.type === 'del' ? '' : (e.newIdx != null ? e.newIdx + 1 : '')}</span>
       <span className="diff-sign">{e.type === 'add' ? '+' : e.type === 'del' ? '−' : e.type === 'modify' ? '~' : ' '}</span>
@@ -2232,7 +2234,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
       return '';
     };
     return (
-      <div key={startIndex + i} className="diff-split-row" style={{ height: ROW_HEIGHT }}>
+      <div key={startIndex + i} className="diff-split-row" style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
         <div className={'diff-split-cell diff-split-old' + cellClass('old')}>
           <span className="diff-gutter-s">{p.oldIdx != null ? p.oldIdx + 1 : ''}</span>
           <span className="diff-content-s">{p.old != null ? p.old : ''}</span>
@@ -2347,21 +2349,30 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
               <div className="diff-split-title diff-split-new">📝 目前(審核後)</div>
             </div>
           )}
-          <div 
-            ref={containerRef} 
-            className={mode === 'unified' ? 'diff-unified diff-virtual-scroll' : 'diff-split-body diff-virtual-scroll'}
-            style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
+          <div
+            ref={containerRef}
+            className={(mode === 'unified' ? 'diff-unified' : 'diff-split-body') + (useVirtual ? ' diff-virtual-scroll' : ' diff-wrap')}
+            style={{ flex: 1, overflowY: 'auto', overflowX: useVirtual ? 'auto' : 'hidden', minHeight: 0 }}
           >
-            <div style={{ height: totalHeight, position: 'relative' }}>
-              <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
-                {visibleItems.map((item, i) => 
-                  mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
-                )}
+            {useVirtual ? (
+              <div style={{ height: totalHeight, position: 'relative', minWidth: 'fit-content' }}>
+                <div style={{ position: 'absolute', top: offsetY, left: 0, minWidth: '100%' }}>
+                  {visibleItems.map((item, i) =>
+                    mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              items.map((item, i) =>
+                mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
+              )
+            )}
           </div>
           <div className="diff-virtual-info text-xs text-gray-400 mt-1">
-            顯示 {startIndex + 1}-{Math.min(endIndex, items.length)} / 共 {items.length} 行
+            {useVirtual
+              ? `顯示 ${startIndex + 1}-${Math.min(endIndex, items.length)} / 共 ${items.length} 行`
+              : `共 ${items.length} 行`
+            }
           </div>
         </div>
       )}
@@ -3603,7 +3614,7 @@ export default function MdReviewer() {
     .diff-modify .diff-gutter-old{background:#fef3c7;color:#d97706}
     .diff-modify .diff-gutter-new{background:#fef3c7;color:#d97706}
     .diff-modify .diff-sign{color:#d97706}
-    .diff-content{flex:1;padding:1px 12px;white-space:pre-wrap;word-break:break-all;min-width:0}
+    .diff-content{flex:1;padding:1px 12px;white-space:pre;min-width:0}
     .diff-word-del{background:#fca5a5;border-radius:2px;padding:0 1px}
     .diff-word-add{background:#86efac;border-radius:2px;padding:0 1px}
 
@@ -3624,7 +3635,9 @@ export default function MdReviewer() {
     .diff-gutter-s{width:40px;flex-shrink:0;text-align:right;padding:1px 6px 1px 2px;color:#9ca3af;font-size:10.5px;user-select:none;border-right:1px solid var(--border)}
     .diff-cell-del .diff-gutter-s{color:#dc2626;background:#fecaca}
     .diff-cell-add .diff-gutter-s{color:#16a34a;background:#bbf7d0}
-    .diff-content-s{flex:1;padding:1px 10px;white-space:pre-wrap;word-break:break-all;min-width:0}
+    .diff-content-s{flex:1;padding:1px 10px;white-space:pre;min-width:0}
+    .diff-wrap .diff-content{white-space:pre-wrap;word-break:break-all}
+    .diff-wrap .diff-content-s{white-space:pre-wrap;word-break:break-all}
 
     .diff-legend{display:flex;align-items:center;gap:14px;padding:10px 20px;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
     .diff-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);font-family:var(--font)}
