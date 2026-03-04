@@ -17,6 +17,7 @@ const FLAG_DEFAULTS = {
   'new-diff-engine': false,  // 新版 diff 引擎（區塊分割 + 相似度配對）
   'dark-mode': false,        // 主題切換 (Sun/Moon 按鈕)
   'dashboard': false,        // 差異儀表板
+  'diff-fold': false,        // 差異折疊（收合未變更行）
 };
 
 // ===== Canary Detection (compile-time) =====

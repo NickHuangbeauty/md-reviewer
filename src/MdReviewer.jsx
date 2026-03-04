@@ -2761,6 +2761,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
   const [manualMode, setManualMode] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [expandedFolds, setExpandedFolds] = useState(new Set());
+  const flagDiffFold = useFeatureFlag('diff-fold');
   const workerRef = useRef(null);
   const requestIdRef = useRef(0);
   
@@ -2930,8 +2931,8 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
       return next;
     });
   }, []);
-  const foldedEdits = useMemo(() => diffMode === 'unified' ? buildFoldedItems(edits, expandedFolds) : [], [edits, expandedFolds, diffMode]);
-  const foldedPairs = useMemo(() => diffMode === 'split' ? buildFoldedItems(pairs, expandedFolds) : [], [pairs, expandedFolds, diffMode]);
+  const foldedEdits = useMemo(() => diffMode === 'unified' ? (flagDiffFold ? buildFoldedItems(edits, expandedFolds) : edits) : [], [edits, expandedFolds, diffMode, flagDiffFold]);
+  const foldedPairs = useMemo(() => diffMode === 'split' ? (flagDiffFold ? buildFoldedItems(pairs, expandedFolds) : pairs) : [], [pairs, expandedFolds, diffMode, flagDiffFold]);
 
   const isIdentical = stats.changed === 0;
   const actualOldLines = useMemo(() => originalContent ? originalContent.split('\n').length : 0, [originalContent]);
