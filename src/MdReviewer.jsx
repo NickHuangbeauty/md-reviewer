@@ -2931,8 +2931,14 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
       return next;
     });
   }, []);
-  const foldedEdits = useMemo(() => diffMode === 'unified' ? (flagDiffFold ? buildFoldedItems(edits, expandedFolds) : edits) : [], [edits, expandedFolds, diffMode, flagDiffFold]);
-  const foldedPairs = useMemo(() => diffMode === 'split' ? (flagDiffFold ? buildFoldedItems(pairs, expandedFolds) : pairs) : [], [pairs, expandedFolds, diffMode, flagDiffFold]);
+  const foldedEdits = useMemo(() => {
+    if (diffMode !== 'unified') return [];
+    return flagDiffFold ? buildFoldedItems(edits, expandedFolds) : edits;
+  }, [edits, expandedFolds, diffMode, flagDiffFold]);
+  const foldedPairs = useMemo(() => {
+    if (diffMode !== 'split') return [];
+    return flagDiffFold ? buildFoldedItems(pairs, expandedFolds) : pairs;
+  }, [pairs, expandedFolds, diffMode, flagDiffFold]);
 
   const isIdentical = stats.changed === 0;
   const actualOldLines = useMemo(() => originalContent ? originalContent.split('\n').length : 0, [originalContent]);
