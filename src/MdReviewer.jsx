@@ -1344,21 +1344,28 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
     return () => { clearTimeout(timer); document.removeEventListener('mousedown', handler); };
   }, [onSave]);
 
+  const activeEntry = useRef(null);
   const doRender = useCallback((src) => {
     if (!window.mermaid || !src.trim()) { setSvg(''); return; }
     clearTimeout(renderTimer.current);
     renderTimer.current = setTimeout(() => {
+      if (activeEntry.current) activeEntry.current.cancelled = true;
       const id = 'mme-' + Date.now();
-      enqueueMermaidRender(id, src.trim()).then(({ svg: s }) => {
-        setSvg(s); setError('');
+      const entry = enqueueMermaidRender(id, src.trim());
+      activeEntry.current = entry;
+      entry.promise.then(({ svg: s }) => {
+        if (!entry.cancelled) { setSvg(s); setError(''); }
       }).catch((err) => {
-        setError(String(err?.message || err).slice(0, 120));
+        if (!entry.cancelled) setError(String(err?.message || err).slice(0, MM_ERR_MAX));
       });
     }, 400);
   }, []);
 
   useEffect(() => { doRender(code); }, [code, doRender]);
-  useEffect(() => { if (taRef.current) taRef.current.focus(); }, []);
+  useEffect(() => {
+    if (taRef.current) taRef.current.focus();
+    return () => { clearTimeout(renderTimer.current); if (activeEntry.current) activeEntry.current.cancelled = true; };
+  }, []);
 
   /* ---- Code→SVG highlight engine ---- */
   const updateHighlight = useCallback(() => {
@@ -1487,33 +1494,42 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
 /* ===== Mermaid Render Queue (serialize to avoid concurrent render crashes) ===== */
 const _mmQueue = [];
 let _mmRunning = false;
+const MM_ERR_MAX = 160;
 /** Remove Mermaid's temp DOM containers for a given render id */
 function cleanupMermaidDom(id) {
   try { document.getElementById(id)?.remove(); } catch {}
   try { document.getElementById('d' + id)?.remove(); } catch {}
 }
+/** Extract code body from a ```mermaid fenced block */
+function extractMermaidCode(raw) {
+  return raw.replace(/^```mermaid\n/i, '').replace(/\n```$/, '').trim();
+}
 function enqueueMermaidRender(id, code) {
-  return new Promise((resolve, reject) => {
-    _mmQueue.push({ id, code, resolve, reject });
-    _drainMmQueue();
-  });
+  const entry = { id, code, resolve: null, reject: null, cancelled: false };
+  entry.promise = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; });
+  _mmQueue.push(entry);
+  _drainMmQueue();
+  return entry;
 }
 async function _drainMmQueue() {
   if (_mmRunning || !_mmQueue.length) return;
   _mmRunning = true;
-  while (_mmQueue.length) {
-    const { id, code, resolve, reject } = _mmQueue.shift();
-    try {
-      // Small delay between renders — gives browser a tick to clean up stale Mermaid DOM nodes
-      await new Promise(r => requestAnimationFrame(r));
-      const result = await window.mermaid.render(id, code);
-      resolve(result);
-    } catch (err) {
-      cleanupMermaidDom(id);
-      reject(err);
+  try {
+    while (_mmQueue.length) {
+      const entry = _mmQueue.shift();
+      if (entry.cancelled) { entry.reject(new Error('cancelled')); continue; }
+      try {
+        await new Promise(r => requestAnimationFrame(r));
+        const result = await window.mermaid.render(entry.id, entry.code);
+        entry.resolve(result);
+      } catch (err) {
+        cleanupMermaidDom(entry.id);
+        entry.reject(err);
+      }
     }
+  } finally {
+    _mmRunning = false;
   }
-  _mmRunning = false;
 }
 
 /* ===== INLINE BLOCK ===== */
@@ -1548,17 +1564,19 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   useEffect(() => { if (isMermaid) { setMermaidSvg(null); setMermaidErr(null); } }, [raw]);
   useEffect(() => {
     if (!isEditing && isMermaid && !mermaidSvg && !mermaidErr && window.mermaid) {
-      const code = raw.replace(/^```mermaid\n/i, '').replace(/\n```$/, '').trim();
+      const code = extractMermaidCode(raw);
       if (!code) return;
-      let cancelled = false;
       const id = 'mm-' + blockId.replace(/[^a-zA-Z0-9]/g, '') + '-' + Date.now();
-      enqueueMermaidRender(id, code).then(({ svg }) => {
-        if (!cancelled) setMermaidSvg(svg);
+      const entry = enqueueMermaidRender(id, code);
+      entry.promise.then(({ svg }) => {
+        if (!entry.cancelled) setMermaidSvg(svg);
       }).catch((err) => {
-        if (!cancelled) setMermaidErr(String(err?.message || err).slice(0, 200));
-        cleanupMermaidDom(id);
+        if (!entry.cancelled) {
+          setMermaidErr(String(err?.message || err).slice(0, MM_ERR_MAX));
+          cleanupMermaidDom(id);
+        }
       });
-      return () => { cancelled = true; cleanupMermaidDom(id); };
+      return () => { entry.cancelled = true; cleanupMermaidDom(id); };
     }
   }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId, mermaidReady]);
 
@@ -1739,7 +1757,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     }
     // Mermaid → live split editor
     if (isMermaid) {
-      const mermaidCode = raw.replace(/^```mermaid\n/i, '').replace(/\n```$/, '').trim();
+      const mermaidCode = extractMermaidCode(raw);
       return (
         <div className="block-wrapper">
           <MermaidEditor initialCode={mermaidCode}
@@ -1795,21 +1813,19 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
         onMouseDown={handlePreviewMouseDown}
         onMouseUp={handlePreviewMouseUp}
         onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(blockId, e); }}>
-        {isMermaid && mermaidSvg ? (
+        {isMermaid && (mermaidSvg || mermaidErr) ? (
           <div className="pv">
             <div dangerouslySetInnerHTML={{ __html: mermaidStrippedHtml }} />
-            <div className="mermaid-body mermaid-rendered">
-              <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
-            </div>
-          </div>
-        ) : isMermaid && mermaidErr ? (
-          <div className="pv">
-            <div dangerouslySetInnerHTML={{ __html: mermaidStrippedHtml }} />
-            <div className="mermaid-body mermaid-error">
-              <div className="mm-err-icon">{'⚠'} </div>
-              <div className="mm-err-title">Mermaid 語法錯誤</div>
-              <div className="mm-err-msg">{mermaidErr}</div>
-              <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
+            <div className={`mermaid-body ${mermaidSvg ? 'mermaid-rendered' : 'mermaid-error'}`}>
+              {mermaidSvg
+                ? <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
+                : <>
+                    <div className="mm-err-icon">{'⚠'} </div>
+                    <div className="mm-err-title">Mermaid 語法錯誤</div>
+                    <div className="mm-err-msg">{mermaidErr}</div>
+                    <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
+                  </>
+              }
             </div>
           </div>
         ) : (
