@@ -30,8 +30,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build production
         run: npm run build
+
+      - name: Build canary
+        run: npm run build:canary
+        env:
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

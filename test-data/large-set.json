@@ -1,0 +1,14 @@
+{"version": 1, "files": [
+  {"name": "file-01.md", "content": "# 文件一\n\n修改後內容。", "originalContent": "# 文件一\n\n原始內容。", "marks": [], "status": "pending"},
+  {"name": "file-02.md", "content": "# 文件二\n\n## 章節\n\n新增一行。\n\n原本就有。", "originalContent": "# 文件二\n\n## 章節\n\n原本就有。", "marks": [], "status": "pending"},
+  {"name": "file-03.md", "content": "# 文件三\n\n完全相同。", "originalContent": "# 文件三\n\n完全相同。", "marks": [], "status": "done"},
+  {"name": "file-04.md", "content": "# 文件四\n\n## A\n\n內容 A。\n\n## B\n\n內容 B 修改。\n\n## C\n\n新章節 C。", "originalContent": "# 文件四\n\n## A\n\n內容 A。\n\n## B\n\n內容 B。", "marks": [], "status": "pending"},
+  {"name": "file-05.md", "content": "# 文件五\n\n1. 項目一\n2. 項目二\n3. 項目三\n4. 新項目", "originalContent": "# 文件五\n\n1. 項目一\n2. 項目二\n3. 項目三", "marks": [], "status": "pending"},
+  {"name": "file-06.md", "content": "# 文件六\n\n不變。", "originalContent": "# 文件六\n\n不變。", "marks": [], "status": "pending"},
+  {"name": "file-07.md", "content": "# 文件七\n\n| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |", "originalContent": "# 文件七\n\n| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |", "marks": [], "status": "done"},
+  {"name": "file-08.md", "content": "# 文件八\n\n大幅修改的文件。\n\n## 新章節一\n\n全新內容。\n\n## 新章節二\n\n更多新內容。", "originalContent": "# 文件八\n\n原始的簡單文件。", "marks": [], "status": "pending"},
+  {"name": "file-09.md", "content": "# 文件九\n\n微調一個字。", "originalContent": "# 文件九\n\n微調二個字。", "marks": [], "status": "pending"},
+  {"name": "file-10.md", "content": "# 文件十\n\n## 段落\n\n這是段落。", "originalContent": "# 文件十\n\n## 段落\n\n這是段落。\n\n## 已刪除段落\n\n此段已移除。", "marks": [], "status": "pending"},
+  {"name": "file-11.md", "content": "# 文件十一\n\n內容。", "originalContent": "# 文件十一\n\n內容。", "marks": [], "status": "pending"},
+  {"name": "file-12.md", "content": "# 文件十二\n\n修改版。\n\n新增行。", "originalContent": "# 文件十二\n\n原始版。", "marks": [], "status": "pending"}
+]}

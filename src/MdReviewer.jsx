@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose } from 'lucide-react';
-import { diffTrimmedLines, diffWords } from 'diff';
+import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon } from 'lucide-react';
+import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
+
 
 /* ===== MD BLOCK SPLITTER ===== */
 function splitMdBlocks(text) {
@@ -239,10 +240,41 @@ function parseBlockToHtml(text) {
       + '</div>';
   }
 
-  // Blockquote
+  // Blockquote - use iterative approach to prevent infinite recursion
   if (text.trim().startsWith('>')) {
-    const inner = text.split('\n').map(l => l.replace(/^>\s?/, '')).join('\n');
-    return '<blockquote class="bq">' + parseBlockToHtml(inner) + '</blockquote>';
+    let inner = text;
+    let depth = 0;
+    const maxDepth = 10; // Prevent infinite recursion
+    let result = '';
+    
+    // Process nested blockquotes iteratively
+    while (inner.trim().startsWith('>') && depth < maxDepth) {
+      inner = inner.split('\n').map(l => l.replace(/^>\s?/, '')).join('\n');
+      depth++;
+    }
+    
+    // Build nested blockquote HTML
+    const openTags = '<blockquote class="bq">'.repeat(depth);
+    const closeTags = '</blockquote>'.repeat(depth);
+    
+    // Process the inner content without recursion for blockquotes
+    // (skip the blockquote check to avoid re-triggering)
+    let h = inner;
+    const bl = [];
+    h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
+    h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
+    h = h.replace(/((?:^\|.+\|$\n?)+)/gm, m => { const t = parseMarkdownTable(m); if (t) { bl.push(t); return `{{B${bl.length - 1}}}\n`; } return m; });
+    h = h.replace(/^##### (.+)$/gm, '<h5>$1</h5>').replace(/^#### (.+)$/gm, '<h4>$1</h4>').replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
+    h = h.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    h = h.replace(/`([^`]+)`/g, '<code class="cd">$1</code>').replace(/^---$/gm, '<hr/>');
+    h = h.replace(/\[x\]/gi, '<input type="checkbox" checked disabled class="md-checkbox" />');
+    h = h.replace(/\[ \]/g, '<input type="checkbox" disabled class="md-checkbox" />');
+    h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
+    h = h.split('\n').map(l => { const t = l.trim(); if (!t || t.startsWith('<') || t.startsWith('{{B')) return l; return `<p>${t}</p>`; }).join('\n');
+    bl.forEach((b, i) => { h = h.replace(`{{B${i}}}`, b); });
+    
+    return openTags + h + closeTags;
   }
 
   let h = text;
@@ -285,6 +317,9 @@ function parseBlockToHtml(text) {
     while (stack.length) out += '</' + stack.pop().tag + '>';
     return out;
   });
+  // Checkbox syntax (must be before link regex to avoid conflicts)
+  h = h.replace(/\[x\]/gi, '<input type="checkbox" checked disabled class="md-checkbox" />');
+  h = h.replace(/\[ \]/g, '<input type="checkbox" disabled class="md-checkbox" />');
   h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
   h = h.replace(/<!--\s*image\s*-->/gi, '<div class="img-ph">[圖片]</div>');
   h = h.replace(/<!--\s*spacer\s*-->/gi, '<div class="spacer-block">&nbsp;</div>');
@@ -319,17 +354,76 @@ function formatMarkdown(text) {
   return parts.map(p => p.t === 'html' ? '\n' + fH(p.c) + '\n' : fM(p.c)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/* ===== SAFE DOWNLOAD ===== */
+/* ===== SAFE DOWNLOAD (FileSaver pattern) ===== */
 function safeDownload(content, filename, mimeType) {
+  console.log('=== safeDownload called ===');
+  console.log('Original filename:', filename);
+  console.log('MimeType:', mimeType);
+  console.log('Content length:', content?.length);
+  
+  // Ensure filename has .md extension
+  if (!filename.endsWith('.md')) {
+    filename = filename + '.md';
+  }
+  console.log('Final filename:', filename);
+  
   try {
     const blob = new Blob([content], { type: mimeType });
+    console.log('Blob created, size:', blob.size);
+    
+    // For IE/Edge (legacy)
+    if (typeof navigator !== 'undefined' && navigator.msSaveBlob) {
+      console.log('Using msSaveBlob (IE/Edge)');
+      navigator.msSaveBlob(blob, filename);
+      return;
+    }
+    
+    // Modern browsers - use FileSaver.js pattern
+    const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    const link = Object.assign(window.document.createElement('a'), { href: url, download: filename, style: 'display:none' });
-    window.document.body.appendChild(link); link.click();
-    setTimeout(() => { window.document.body.removeChild(link); URL.revokeObjectURL(url); }, 200);
-  } catch {
-    try { const b64 = btoa(unescape(encodeURIComponent(content))); window.open('data:' + mimeType + ';base64,' + b64, '_blank'); }
-    catch { alert('下載失敗'); }
+    
+    link.href = url;
+    link.download = filename;
+    
+    console.log('Link created:');
+    console.log('  - href:', link.href);
+    console.log('  - download attribute:', link.download);
+    console.log('  - link.getAttribute("download"):', link.getAttribute('download'));
+    
+    // Append to body (required for Firefox)
+    document.body.appendChild(link);
+    
+    // Dispatch click event (more reliable than link.click())
+    const event = new MouseEvent('click', {
+      view: window,
+      bubbles: true,
+      cancelable: true
+    });
+    link.dispatchEvent(event);
+    console.log('Click event dispatched');
+    
+    // Cleanup after download starts
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      console.log('Cleanup completed');
+    }, 100);
+    
+  } catch (e) {
+    console.error('Download error:', e);
+    // Fallback: prompt user to save manually
+    try {
+      const b64 = btoa(unescape(encodeURIComponent(content)));
+      const dataUri = 'data:' + mimeType + ';base64,' + b64;
+      const downloadLink = document.createElement('a');
+      downloadLink.href = dataUri;
+      downloadLink.download = filename;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    } catch {
+      alert('下載失敗，請使用瀏覽器的「另存為」功能');
+    }
   }
 }
 
@@ -2009,114 +2103,6 @@ function isEmptyOrWhitespace(line) {
   return false;
 }
 
-/**
- * 使用 jsdiff 進行行級別差異比較
- * 優點：自動忽略行首尾空白、算法更穩定、支援智能修改偵測
- */
-function computeLineDiff(oldText, newText) {
-  // 先正規化文字（處理 Markdown 表格格式差異）
-  const normOld = normalizeTextForDiff(oldText || '');
-  const normNew = normalizeTextForDiff(newText || '');
-
-  // 使用 jsdiff 的 diffTrimmedLines（自動忽略行首尾空白）
-  const diffs = diffTrimmedLines(normOld, normNew);
-
-  const edits = [];
-  let oldIdx = 0, newIdx = 0;
-  let i = 0;
-
-  while (i < diffs.length) {
-    const part = diffs[i];
-    const lines = part.value.split('\n').filter((l, idx, arr) =>
-      !(idx === arr.length - 1 && l === '')
-    );
-
-    if (!part.added && !part.removed) {
-      // 未變更的行
-      lines.forEach(line => {
-        edits.push({ type: 'eq', oldLine: line, newLine: line, oldIdx: oldIdx++, newIdx: newIdx++ });
-      });
-      i++;
-    } else if (part.removed && diffs[i + 1]?.added) {
-      // 刪除後緊接新增 → 可能是「修改」
-      const removed = part;
-      const added = diffs[i + 1];
-      const oldLines = removed.value.split('\n').filter((l, idx, arr) => !(idx === arr.length - 1 && l === ''));
-      const newLines = added.value.split('\n').filter((l, idx, arr) => !(idx === arr.length - 1 && l === ''));
-
-      const maxLen = Math.max(oldLines.length, newLines.length);
-      for (let j = 0; j < maxLen; j++) {
-        const oldLine = oldLines[j];
-        const newLine = newLines[j];
-
-        if (!oldLine && newLine) {
-          edits.push({ type: 'add', newLine, newIdx: newIdx++ });
-        } else if (oldLine && !newLine) {
-          edits.push({ type: 'del', oldLine, oldIdx: oldIdx++ });
-        } else {
-          // 計算 word-level 相似度
-          const wordDiff = diffWords(oldLine, newLine);
-          const unchanged = wordDiff.filter(p => !p.added && !p.removed)
-            .reduce((sum, p) => sum + p.value.length, 0);
-          const total = Math.max(oldLine.length, newLine.length, 1);
-          const similarity = unchanged / total;
-
-          if (similarity > 0.5) {
-            // 相似度高，視為修改
-            edits.push({ type: 'modify', oldLine, newLine, oldIdx: oldIdx++, newIdx: newIdx++, similarity });
-          } else {
-            // 相似度低，視為刪除 + 新增
-            edits.push({ type: 'del', oldLine, oldIdx: oldIdx++ });
-            edits.push({ type: 'add', newLine, newIdx: newIdx++ });
-          }
-        }
-      }
-      i += 2;
-    } else if (part.added) {
-      lines.forEach(line => {
-        edits.push({ type: 'add', newLine: line, newIdx: newIdx++ });
-      });
-      i++;
-    } else if (part.removed) {
-      lines.forEach(line => {
-        edits.push({ type: 'del', oldLine: line, oldIdx: oldIdx++ });
-      });
-      i++;
-    } else {
-      i++;
-    }
-  }
-
-  return edits;
-}
-
-/**
- * 正規化文字用於 diff 比較（處理 Markdown 表格格式差異）
- */
-function normalizeTextForDiff(text) {
-  if (!text) return '';
-  let normalized = text;
-
-  // 1. 正規化 Markdown 表格分隔行 |---|---|---| → |---|---|---|
-  normalized = normalized.replace(/^\|[\s-:]+\|[\s-:|]*$/gm, match => {
-    const cols = (match.match(/\|/g) || []).length - 1;
-    return '|' + Array(Math.max(cols, 1)).fill('---').join('|') + '|';
-  });
-
-  // 2. 正規化表格儲存格內的空白 |  foo  | → |foo|
-  normalized = normalized.replace(/\|([^|\n]*)\|/g, (match, content) => {
-    return '|' + content.trim() + '|';
-  });
-
-  // 3. 移除 HTML 裝飾性屬性
-  normalized = normalized.replace(/\s+(width|height|align|valign|style|bgcolor|border|cellpadding|cellspacing)="[^"]*"/gi, '');
-
-  // 4. 統一換行符
-  normalized = normalized.replace(/\r\n/g, '\n');
-
-  return normalized;
-}
-
 function computeDiffStats(edits) {
   const total = edits.length;
   const added = edits.filter(e => e.type === 'add').length;
@@ -2124,7 +2110,7 @@ function computeDiffStats(edits) {
   const modified = edits.filter(e => e.type === 'modify').length;
   const unchanged = edits.filter(e => e.type === 'eq').length;
 
-  // 原始文件總行數
+  // 原始文件總行數（eq + del + modify 都來自舊文件）
   const oldTotal = deleted + unchanged + modified;
 
   // 計算「有意義」的變更（排除空行/空標籤）
@@ -2133,14 +2119,12 @@ function computeDiffStats(edits) {
 
   edits.forEach(e => {
     if (e.type === 'add') {
-      // 新增的空標籤行權重降低
       if (!isEmptyOrWhitespace(e.newLine)) {
         meaningfulAdded += 1;
       } else {
-        meaningfulAdded += 0.1; // 空行只算 10%
+        meaningfulAdded += 0.1;
       }
     } else if (e.type === 'del') {
-      // 刪除的空標籤行權重降低
       if (!isEmptyOrWhitespace(e.oldLine)) {
         meaningfulDeleted += 1;
       } else {
@@ -2149,32 +2133,647 @@ function computeDiffStats(edits) {
     }
   });
 
-  // 變更幅度計算：
-  // - 有意義的新增/刪除：完整計入
-  // - 修改：根據相似度加權（相似度越高，權重越低）
-  let weightedChanges = meaningfulAdded + meaningfulDeleted;
+  // 變更幅度：(新增 + 刪除) ÷ 原始行數，微調不計入，上限 100%
+  const weightedChanges = meaningfulAdded + meaningfulDeleted;
 
-  edits.filter(e => e.type === 'modify').forEach(e => {
-    // 相似度 0.6 → 權重 0.4, 相似度 0.9 → 權重 0.1
-    const weight = 1 - (e.similarity || 0.6);
-    weightedChanges += weight;
-  });
-
-  // 計算有意義的原始行數（排除空行）
+  // 有意義的原始行數（排除空行）
   const meaningfulOldTotal = edits.filter(e =>
     (e.type === 'del' || e.type === 'eq' || e.type === 'modify') &&
     !isEmptyOrWhitespace(e.oldLine)
-  ).length || oldTotal;
+  ).length || oldTotal || 1;
 
-  const changeRatio = meaningfulOldTotal > 0 ? weightedChanges / meaningfulOldTotal : (added > 0 ? 1 : 0);
+  const rawRatio = meaningfulOldTotal > 0 ? weightedChanges / meaningfulOldTotal : (added > 0 ? 1 : 0);
+  const changeRatio = Math.min(rawRatio, 1.0);
 
   return { total, added, deleted, modified, unchanged, changed: added + deleted + modified, changeRatio, oldTotal };
 }
 
+function DownloadConfirmModal({ filename, onConfirm, onClose }) {
+  const [name, setName] = useState(filename);
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+        <div className="px-5 py-4 border-b flex justify-between items-center bg-gray-50">
+          <h3 className="font-bold text-lg text-gray-800">確認下載</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">檔案名稱</label>
+          <input
+            type="text"
+            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 text-gray-800"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onConfirm(name)}
+            autoFocus
+          />
+          <p className="mt-2 text-xs text-gray-500">提示：您可以修改下載後的檔案名稱</p>
+        </div>
+        <div className="px-5 py-4 bg-gray-50 border-t flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-md">取消</button>
+          <button onClick={() => onConfirm(name)} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-md shadow-sm">確認下載</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Virtual scrolling component for large diffs
+function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, needsRefresh, onRefresh }) {
+  const containerRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(400);
+  
+  const ROW_HEIGHT = 24; // pixels per row
+  const BUFFER = 10; // extra rows to render above/below viewport
+  
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const updateHeight = () => setContainerHeight(container.clientHeight);
+    updateHeight();
+    
+    const handleScroll = () => setScrollTop(container.scrollTop);
+    container.addEventListener('scroll', handleScroll);
+    window.addEventListener('resize', updateHeight);
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, []);
+  
+  const totalHeight = items.length * ROW_HEIGHT;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER);
+  const endIndex = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + BUFFER);
+  const visibleItems = items.slice(startIndex, endIndex);
+  const offsetY = startIndex * ROW_HEIGHT;
+  
+  // Render a single unified row
+  const renderUnifiedRow = (e, i) => (
+    <div key={startIndex + i} className={'diff-line diff-' + e.type} style={{ height: ROW_HEIGHT }}>
+      <span className="diff-gutter-old">{e.type === 'add' ? '' : (e.oldIdx != null ? e.oldIdx + 1 : '')}</span>
+      <span className="diff-gutter-new">{e.type === 'del' ? '' : (e.newIdx != null ? e.newIdx + 1 : '')}</span>
+      <span className="diff-sign">{e.type === 'add' ? '+' : e.type === 'del' ? '−' : e.type === 'modify' ? '~' : ' '}</span>
+      <span className="diff-content">{e.type === 'add' ? (e.newLine || '') : e.type === 'modify' ? (e.newLine || '') : (e.oldLine || '')}</span>
+    </div>
+  );
+  
+  // Render a single split row
+  const renderSplitRow = (p, i) => {
+    const cellClass = (side) => {
+      if (p.type === 'modify') return ' diff-cell-modify';
+      if (p.type === 'change') {
+        if (side === 'old') return p.old != null ? ' diff-cell-del' : ' diff-cell-empty';
+        return p.new != null ? ' diff-cell-add' : ' diff-cell-empty';
+      }
+      return '';
+    };
+    return (
+      <div key={startIndex + i} className="diff-split-row" style={{ height: ROW_HEIGHT }}>
+        <div className={'diff-split-cell diff-split-old' + cellClass('old')}>
+          <span className="diff-gutter-s">{p.oldIdx != null ? p.oldIdx + 1 : ''}</span>
+          <span className="diff-content-s">{p.old != null ? p.old : ''}</span>
+        </div>
+        <div className={'diff-split-cell diff-split-new' + cellClass('new')}>
+          <span className="diff-gutter-s">{p.newIdx != null ? p.newIdx + 1 : ''}</span>
+          <span className="diff-content-s">{p.new != null ? p.new : ''}</span>
+        </div>
+      </div>
+    );
+  };
+  
+  return (
+    <div className="diff-virtual-container" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Blur overlay when diff is stale in manual mode */}
+      {manualMode && needsRefresh && items.length > 0 && !isCalculating && (
+        <div className="diff-stale-overlay">
+          <div className="diff-stale-content">
+            <div className="diff-stale-icon">⚠️</div>
+            <div className="diff-stale-title">內容已變更</div>
+            <div className="diff-stale-desc">大型文件已啟用手動比對模式，請點擊下方按鈕更新差異顯示</div>
+            <button 
+              onClick={onRefresh}
+              className="diff-stale-btn"
+            >
+              🔄 更新差異比對
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Manual mode indicator bar */}
+      {manualMode && (
+        <div className="diff-manual-bar" style={{
+          padding: '8px 12px',
+          background: 'linear-gradient(90deg, #fef3c7, #fde68a)',
+          borderRadius: '6px',
+          marginBottom: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '16px' }}>⚡</span>
+            <span style={{ color: '#92400e', fontSize: '12px', fontWeight: 500 }}>
+              大型內容（&gt;3000字元）：已啟用手動比對模式
+            </span>
+          </div>
+          <button 
+            onClick={onRefresh}
+            disabled={isCalculating}
+            style={{
+              padding: '4px 12px',
+              fontSize: '12px',
+              background: needsRefresh ? '#3b82f6' : '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isCalculating ? 'not-allowed' : 'pointer',
+              opacity: isCalculating ? 0.5 : 1,
+              fontWeight: 500
+            }}
+          >
+            {isCalculating ? '⏳ 計算中...' : needsRefresh ? '🔄 更新比對' : '✓ 已是最新'}
+          </button>
+        </div>
+      )}
+      
+      {/* Progress Bar */}
+      {isCalculating && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+          background: '#e5e7eb', zIndex: 10
+        }}>
+          <div style={{
+            height: '100%', background: '#3b82f6', width: `${progress}%`,
+            transition: 'width 0.2s ease-out'
+          }} />
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <div className="diff-empty" style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: 200,
+          color: '#9ca3af',
+          fontSize: '14px'
+        }}>
+          {isCalculating ? (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'8px'}}>
+               <span style={{ fontSize:'24px', animation: 'spin 1s linear infinite' }}>⏳</span>
+               <span>正在計算差異中... ({progress}%)</span>
+            </div>
+          ) : manualMode ? '請點擊「更新比對」按鈕來計算差異' : '尚無差異資料'}
+        </div>
+      ) : (
+        <div style={{
+          position: 'relative',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          filter: (manualMode && needsRefresh) ? 'blur(3px)' : 'none',
+          opacity: (manualMode && needsRefresh) ? 0.6 : 1,
+          transition: 'filter 0.3s, opacity 0.3s'
+        }}>
+          {mode === 'split' && (
+            <div className="diff-split-header">
+              <div className="diff-split-title diff-split-old">📄 原始(解析者產出)</div>
+              <div className="diff-split-title diff-split-new">📝 目前(審核後)</div>
+            </div>
+          )}
+          <div 
+            ref={containerRef} 
+            className={mode === 'unified' ? 'diff-unified diff-virtual-scroll' : 'diff-split-body diff-virtual-scroll'}
+            style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+                {visibleItems.map((item, i) => 
+                  mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="diff-virtual-info text-xs text-gray-400 mt-1">
+            顯示 {startIndex + 1}-{Math.min(endIndex, items.length)} / 共 {items.length} 行
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== Dashboard Stats Hook =====
+
+function simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
+function useDashboardStats(files, isActive) {
+  const workerRef = useRef(null);
+  const cacheRef = useRef(new Map());
+  const [allStats, setAllStats] = useState(new Map());
+  const [computing, setComputing] = useState({ active: false, current: 0, total: 0 });
+  const queueRef = useRef([]);
+  const activeRef = useRef(false);
+
+  useEffect(() => {
+    const w = new Worker(new URL('./diffWorker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (e) => {
+      const { id, type, stats, canary } = e.data;
+      if (type === 'stats-complete') {
+        // Canary report logging
+        if (canary) {
+          canary.violations?.forEach(v => console.warn('[Canary]', id, v.code, v.message));
+          canary.suspicious?.forEach(s => console.warn('[Canary:Suspicious]', id, s.code, s.message));
+        }
+        cacheRef.current.set(id, stats);
+        setAllStats(prev => new Map(prev).set(id, stats));
+        setComputing(prev => {
+          const next = { ...prev, current: prev.current + 1 };
+          if (next.current >= next.total) next.active = false;
+          return next;
+        });
+        // Process next in queue
+        const nextFile = queueRef.current.shift();
+        if (nextFile) {
+          w.postMessage({ id: nextFile.id, mode: 'stats', oldText: nextFile.originalContent || '', newText: nextFile.content || '', flags: getAllFlags() });
+        }
+      }
+    };
+    workerRef.current = w;
+    return () => w.terminate();
+  }, []);
+
+  useEffect(() => {
+    if (!isActive || !workerRef.current) return;
+    activeRef.current = true;
+
+    // Find files that need (re)computation
+    const stale = files.filter(f => {
+      if (!f.originalContent) return false;
+      const hash = simpleHash(f.originalContent + '|' + f.content);
+      const cached = cacheRef.current.get(f.id);
+      if (cached && cached._hash === hash) return false;
+      return true;
+    });
+
+    if (stale.length === 0) {
+      // Populate allStats from cache
+      const m = new Map();
+      files.forEach(f => { if (cacheRef.current.has(f.id)) m.set(f.id, cacheRef.current.get(f.id)); });
+      setAllStats(m);
+      return;
+    }
+
+    setComputing({ active: true, current: 0, total: stale.length });
+
+    // Tag cache entries with hash for invalidation
+    stale.forEach(f => {
+      const hash = simpleHash(f.originalContent + '|' + f.content);
+      const placeholder = { _hash: hash, _pending: true };
+      cacheRef.current.set(f.id, placeholder);
+    });
+
+    // Queue all stale files, start first
+    queueRef.current = stale.slice(1);
+    const first = stale[0];
+    workerRef.current.postMessage({ id: first.id, mode: 'stats', oldText: first.originalContent || '', newText: first.content || '', flags: getAllFlags() });
+  }, [isActive, files]);
+
+  const recompute = useCallback(() => {
+    cacheRef.current.clear();
+    setAllStats(new Map());
+  }, []);
+
+  return { allStats, computing, recompute };
+}
+
+// ===== Dashboard Overview Component =====
+
+function getSeverityInfo(ratio) {
+  if (ratio <= 0.05) return { label: '微量修改', color: '#10b981', bg: '#ecfdf5' };
+  if (ratio <= 0.15) return { label: '適度修改', color: '#f59e0b', bg: '#fffbeb' };
+  if (ratio <= 0.30) return { label: '大幅修改', color: '#f97316', bg: '#fff7ed' };
+  return { label: '重大變更', color: '#ef4444', bg: '#fef2f2' };
+}
+
+function DashboardOverview({ files, allStats, computing, onSelectFile, onClose }) {
+  const fileRows = useMemo(() => {
+    return files.map(f => {
+      const stats = allStats.get(f.id);
+      const hasOriginal = !!f.originalContent;
+      const identical = hasOriginal && f.originalContent === f.content;
+      const actualLines = hasOriginal ? f.originalContent.split('\n').length : (f.content || '').split('\n').length;
+      return { ...f, stats, hasOriginal, identical, actualLines };
+    }).sort((a, b) => {
+      const ra = a.stats?.changeRatio ?? -1;
+      const rb = b.stats?.changeRatio ?? -1;
+      return rb - ra;
+    });
+  }, [files, allStats]);
+
+  const summary = useMemo(() => {
+    const withStats = fileRows.filter(r => r.stats && !r.stats._pending);
+    const total = files.length;
+    const computed = withStats.length;
+    const avgRatio = computed > 0 ? withStats.reduce((s, r) => s + r.stats.changeRatio, 0) / computed : 0;
+    const maxFile = withStats.length > 0 ? withStats.reduce((a, b) => (a.stats.changeRatio > b.stats.changeRatio ? a : b)) : null;
+    const totalAdded = withStats.reduce((s, r) => s + r.stats.added, 0);
+    const totalDeleted = withStats.reduce((s, r) => s + r.stats.deleted, 0);
+    const totalModified = withStats.reduce((s, r) => s + r.stats.modified, 0);
+    const totalUnchanged = withStats.reduce((s, r) => s + r.stats.unchanged, 0);
+    return { total, computed, avgRatio, maxFile, totalAdded, totalDeleted, totalModified, totalUnchanged };
+  }, [files, fileRows]);
+
+  const avgSeverity = getSeverityInfo(summary.avgRatio);
+
+  return (
+    <div className="dash-container">
+      <div className="dash-header">
+        <div className="dash-title">
+          <BarChart3 className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+          <span>差異儀表板</span>
+        </div>
+        <button onClick={onClose} className="dash-close"><X className="w-4 h-4" /></button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="dash-cards">
+        <div className="dash-card">
+          <div className="dash-card-value">{summary.total}</div>
+          <div className="dash-card-label">總檔案數</div>
+          {computing.active && <div className="dash-card-sub">計算中 {computing.current}/{computing.total}...</div>}
+        </div>
+        <div className="dash-card" style={{ borderTopColor: avgSeverity.color }}>
+          <div className="dash-card-value" style={{ color: avgSeverity.color }}>{(summary.avgRatio * 100).toFixed(1)}%</div>
+          <div className="dash-card-label">平均變更率</div>
+          <div className="dash-card-sub" style={{ color: avgSeverity.color }}>{avgSeverity.label}</div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-card-value" style={{ color: '#10b981' }}>+{summary.totalAdded}</div>
+          <div className="dash-card-label">總新增行</div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-card-value" style={{ color: '#ef4444' }}>-{summary.totalDeleted}</div>
+          <div className="dash-card-label">總刪除行</div>
+        </div>
+        <div className="dash-card">
+          <div className="dash-card-value" style={{ color: '#f59e0b' }}>~{summary.totalModified}</div>
+          <div className="dash-card-label">總修改行</div>
+        </div>
+      </div>
+
+      {/* Per-file Donut Charts */}
+      {summary.computed > 0 && (() => {
+        const r = 38, circ = 2 * Math.PI * r;
+        const donuts = fileRows.filter(row => row.stats && !row.stats._pending);
+        if (donuts.length === 0) return null;
+        return (
+          <div className="dash-donut-grid">
+            {donuts.map((row, di) => {
+              const s = row.stats;
+              const total = s.unchanged + s.added + s.deleted + s.modified;
+              if (total === 0) return null;
+              const segs = [
+                { value: s.unchanged, color: '#d1d5db' },
+                { value: s.added, color: '#10b981' },
+                { value: s.deleted, color: '#ef4444' },
+                { value: s.modified, color: '#f59e0b' },
+              ].filter(seg => seg.value > 0);
+              let cum = 0;
+              const arcs = segs.map(seg => {
+                const len = (seg.value / total) * circ;
+                const off = cum; cum += len;
+                return { ...seg, len, off };
+              });
+              const sev = getSeverityInfo(s.changeRatio);
+              return (
+                <div key={row.id} className="dash-donut-cell" onClick={() => onSelectFile(row.id)} title={`點擊查看 ${row.name} 的差異比對`}>
+                  <div className="dash-donut-wrap-sm">
+                    <svg viewBox="0 0 100 100" className="dash-donut-svg">
+                      {arcs.map((a, i) => (
+                        <circle key={i} r={r} cx="50" cy="50" fill="none" stroke={a.color} strokeWidth="12"
+                          strokeDasharray={a.len + ' ' + (circ - a.len)} strokeDashoffset={-a.off}
+                          transform="rotate(-90 50 50)" className="dash-donut-seg" style={{ animationDelay: (di * 150 + i * 100) + 'ms' }} />
+                      ))}
+                    </svg>
+                    <div className="dash-donut-center">
+                      <div className="dash-donut-pct" style={{ color: sev.color }}>{(s.changeRatio * 100).toFixed(1)}%</div>
+                    </div>
+                  </div>
+                  <div className="dash-donut-fname">{row.name}</div>
+                  <div className="dash-donut-meta">
+                    {s.added > 0 && <span style={{ color: '#10b981' }}>+{s.added}</span>}
+                    {s.deleted > 0 && <span style={{ color: '#ef4444' }}>-{s.deleted}</span>}
+                    {s.modified > 0 && <span style={{ color: '#f59e0b' }}>~{s.modified}</span>}
+                    {s.changed === 0 && <span style={{ color: '#10b981' }}>無變更</span>}
+                  </div>
+                  <div className="dash-donut-lines">{row.actualLines} 行</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Shared legend */}
+      <div className="dash-legend-bar">
+        <span className="dash-legend-item"><span className="dash-legend-dot" style={{ background: '#d1d5db' }} />未變更</span>
+        <span className="dash-legend-item"><span className="dash-legend-dot" style={{ background: '#10b981' }} />新增</span>
+        <span className="dash-legend-item"><span className="dash-legend-dot" style={{ background: '#ef4444' }} />刪除</span>
+        <span className="dash-legend-item"><span className="dash-legend-dot" style={{ background: '#f59e0b' }} />修改</span>
+      </div>
+
+      {/* File ranking */}
+      <div className="dash-section-title">檔案變更排行</div>
+      <div className="dash-ranking">
+        {fileRows.map((row, idx) => {
+          const stats = row.stats;
+          const pending = !stats || stats._pending;
+          const ratio = pending ? 0 : stats.changeRatio;
+          const sev = getSeverityInfo(ratio);
+          const barWidth = Math.max(ratio * 100, 0.5);
+
+          return (
+            <div key={row.id} className="dash-row" onClick={() => onSelectFile(row.id)} title={`點擊查看 ${row.name} 的差異比對`}>
+              <div className="dash-row-rank">{idx + 1}</div>
+              <div className="dash-row-name">{row.name}</div>
+              <div className="dash-row-bar-wrap">
+                {pending ? (
+                  <div className="dash-row-pending">計算中...</div>
+                ) : row.identical ? (
+                  <div className="dash-row-identical">無變更</div>
+                ) : (
+                  <div className="dash-row-stacked" style={{ width: Math.min(barWidth, 100) + '%', animationDelay: (idx * 60) + 'ms' }}>
+                    {stats.added > 0 && <div style={{ flex: stats.added, background: '#10b981' }} />}
+                    {stats.deleted > 0 && <div style={{ flex: stats.deleted, background: '#ef4444' }} />}
+                    {stats.modified > 0 && <div style={{ flex: stats.modified, background: '#f59e0b' }} />}
+                  </div>
+                )}
+              </div>
+              <div className="dash-row-pct" style={{ color: pending ? '#9ca3af' : sev.color }}>
+                {pending ? '...' : (ratio * 100).toFixed(1) + '%'}
+              </div>
+              <div className="dash-row-counts">
+                {!pending && stats.changed > 0 && (
+                  <>
+                    {stats.added > 0 && <span style={{ color: '#10b981' }}>+{stats.added}</span>}
+                    {stats.deleted > 0 && <span style={{ color: '#ef4444' }}>-{stats.deleted}</span>}
+                    {stats.modified > 0 && <span style={{ color: '#f59e0b' }}>~{stats.modified}</span>}
+                  </>
+                )}
+              </div>
+              <div className="dash-row-lines">{row.actualLines}行</div>
+            </div>
+          );
+        })}
+        {fileRows.length === 0 && <div className="dash-empty">尚無檔案</div>}
+      </div>
+    </div>
+  );
+}
+
+function SourceEditor({ value, onChange }) {
+  const textareaRef = useRef(null);
+  const gutterRef = useRef(null);
+  const lineCount = useMemo(() => (value || '').split('\n').length, [value]);
+
+  const syncScroll = useCallback(() => {
+    if (gutterRef.current && textareaRef.current) {
+      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  }, []);
+
+  return (
+    <div className="flex-1 overflow-hidden flex" style={{ background: '#0d1117' }}>
+      <div ref={gutterRef} className="source-gutter" aria-hidden="true">
+        {Array.from({ length: lineCount }, (_, i) => (
+          <div key={i} className="source-gutter-line">{i + 1}</div>
+        ))}
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onScroll={syncScroll}
+        className="source-editor"
+        spellCheck={false}
+      />
+    </div>
+  );
+}
 
 function DiffViewer({ originalContent, currentContent, fileName }) {
   const [diffMode, setDiffMode] = useState('unified'); // unified | split
-  const edits = useMemo(() => computeLineDiff(originalContent, currentContent), [originalContent, currentContent]);
+  const [edits, setEdits] = useState([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [manualMode, setManualMode] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const workerRef = useRef(null);
+  const requestIdRef = useRef(0);
+  
+  // Threshold for large content (characters)
+  const LARGE_CONTENT_THRESHOLD = 3000;
+  const isLargeContent = (originalContent?.length || 0) > LARGE_CONTENT_THRESHOLD || 
+                          (currentContent?.length || 0) > LARGE_CONTENT_THRESHOLD;
+  
+  // Initialize Web Worker
+  useEffect(() => {
+    workerRef.current = new Worker(new URL('./diffWorker.js', import.meta.url), { type: 'module' });
+    workerRef.current.onmessage = (e) => {
+      const { id, type, edits: newEdits, progress: newProgress, error, canary } = e.data;
+
+      // Only accept results from the latest request
+      if (id !== requestIdRef.current) return;
+
+      if (type === 'progress') {
+        if (newEdits && newEdits.length > 0) {
+          setEdits(prev => [...prev, ...newEdits]);
+        }
+        if (typeof newProgress === 'number') {
+          setProgress(newProgress);
+        }
+      } else if (type === 'complete') {
+        // Canary report logging
+        if (canary) {
+          canary.violations?.forEach(v => console.warn('[Canary]', id, v.code, v.message));
+          canary.suspicious?.forEach(s => console.warn('[Canary:Suspicious]', id, s.code, s.message));
+        }
+        setIsCalculating(false);
+        setNeedsRefresh(false);
+        setProgress(100);
+      } else if (type === 'error') {
+        console.error('Diff Worker Error:', error);
+        setIsCalculating(false);
+      }
+    };
+    return () => workerRef.current?.terminate();
+  }, []);
+  
+  // Auto-enable manual mode for large content
+  useEffect(() => {
+    if (isLargeContent && !manualMode) {
+      setManualMode(true);
+      setNeedsRefresh(true);
+    }
+  }, [isLargeContent]);
+  
+  // Mark as needing refresh when content changes in manual mode
+  useEffect(() => {
+    if (manualMode) {
+      setNeedsRefresh(true);
+    }
+  }, [originalContent, currentContent]);
+  
+  // Debounce and send to worker (only in auto mode)
+  useEffect(() => {
+    if (manualMode) return; // Skip auto-update in manual mode
+    
+    const timer = setTimeout(() => {
+      if (workerRef.current) {
+        requestIdRef.current++;
+        setIsCalculating(true);
+        setEdits([]); // Reset edits for streaming
+        setProgress(0);
+        workerRef.current.postMessage({
+          id: requestIdRef.current,
+          oldText: originalContent,
+          newText: currentContent,
+          flags: getAllFlags()
+        });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [originalContent, currentContent, manualMode]);
+
+  // Manual refresh function
+  const triggerDiff = () => {
+    if (workerRef.current) {
+      requestIdRef.current++;
+      setIsCalculating(true);
+      setEdits([]); // Reset edits for streaming
+      setProgress(0);
+      workerRef.current.postMessage({
+        id: requestIdRef.current,
+        oldText: originalContent,
+        newText: currentContent,
+        flags: getAllFlags()
+      });
+    }
+  };
+  
   const stats = useMemo(() => computeDiffStats(edits), [edits]);
 
   const severityColor = stats.changeRatio <= 0.05 ? '#10b981' : stats.changeRatio <= 0.15 ? '#f59e0b' : stats.changeRatio <= 0.30 ? '#f97316' : '#ef4444';
@@ -2204,13 +2803,23 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
     return { oldHtml: oldHtml.join(''), newHtml: newHtml.join('') };
   };
 
-  // Build paired hunks for split view
-  const buildPairs = () => {
-    const pairs = [];
+  // Build paired hunks for split view - memoized for performance
+  const pairs = useMemo(() => {
+    const result = [];
     let i = 0;
     while (i < edits.length) {
       if (edits[i].type === 'eq') {
-        pairs.push({ type: 'eq', old: edits[i].oldLine, new: edits[i].newLine, oldIdx: edits[i].oldIdx, newIdx: edits[i].newIdx });
+        result.push({ type: 'eq', old: edits[i].oldLine, new: edits[i].newLine, oldIdx: edits[i].oldIdx, newIdx: edits[i].newIdx });
+        i++;
+      } else if (edits[i].type === 'modify') {
+        // Modify → show as modify pair (old vs new, distinct from del/add)
+        result.push({
+          type: 'modify',
+          old: edits[i].oldLine,
+          new: edits[i].newLine,
+          oldIdx: edits[i].oldIdx,
+          newIdx: edits[i].newIdx,
+        });
         i++;
       } else {
         // Collect consecutive del/add as a "change" group
@@ -2219,7 +2828,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         while (i < edits.length && edits[i].type === 'add') { adds.push(edits[i]); i++; }
         const max = Math.max(dels.length, adds.length);
         for (let j = 0; j < max; j++) {
-          pairs.push({
+          result.push({
             type: 'change',
             old: j < dels.length ? dels[j].oldLine : null,
             new: j < adds.length ? adds[j].newLine : null,
@@ -2229,10 +2838,11 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         }
       }
     }
-    return pairs;
-  };
+    return result;
+  }, [edits]);
 
   const isIdentical = stats.changed === 0;
+  const actualOldLines = useMemo(() => originalContent ? originalContent.split('\n').length : 0, [originalContent]);
 
   return (
     <div className="diff-viewer">
@@ -2247,11 +2857,11 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
           <span className="diff-stat-num" style={{ color: '#ef4444' }}>−{stats.deleted}</span>
           {stats.modified > 0 && <span className="diff-stat-num" style={{ color: '#f59e0b' }}>~{stats.modified} 修改</span>}
           <span className="diff-stat-num" style={{ color: '#6b7280' }}>{stats.unchanged} 未變</span>
-          <span className="diff-stat-base" title="原始文件行數">原始 {stats.oldTotal} 行</span>
+          <span className="diff-stat-base" title="原始文件行數">原始 {actualOldLines} 行</span>
         </div>
         <div className="diff-stats-right">
           {/* Change ratio bar */}
-          <div className="diff-ratio-wrap" title={'(+' + stats.added + ' −' + stats.deleted + ') / 原始 ' + stats.oldTotal + ' 行 = ' + (stats.changeRatio * 100).toFixed(1) + '%'}>
+          <div className="diff-ratio-wrap" title={'(+' + stats.added + ' −' + stats.deleted + ') / 原始 ' + actualOldLines + ' 行 = ' + (stats.changeRatio * 100).toFixed(1) + '% (上限100%)'}>
             <div className="diff-ratio-label">變更幅度</div>
             <div className="diff-ratio-bar">
               <div className="diff-ratio-fill" style={{ width: Math.min(stats.changeRatio * 100, 100) + '%', background: severityColor }} />
@@ -2268,74 +2878,120 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         </div>
       </div>
 
+      {/* Large content warning - shows even when identical */}
+      {manualMode && (
+        <div style={{
+          padding: '10px 16px',
+          background: 'linear-gradient(90deg, #fef3c7, #fde68a)',
+          borderBottom: '1px solid #fcd34d',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '20px' }}>⚡</span>
+            <div>
+              <div style={{ color: '#92400e', fontSize: '13px', fontWeight: 600 }}>
+                大型內容模式（&gt;3000 字元）
+              </div>
+              <div style={{ color: '#a16207', fontSize: '11px' }}>
+                為確保編輯流暢，需手動點擊「更新比對」來刷新差異顯示
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={triggerDiff}
+            disabled={isCalculating}
+            style={{
+              padding: '6px 16px',
+              fontSize: '12px',
+              background: needsRefresh ? '#3b82f6' : '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isCalculating ? 'not-allowed' : 'pointer',
+              opacity: isCalculating ? 0.5 : 1,
+              fontWeight: 600,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {isCalculating ? '⏳ 計算中...' : needsRefresh ? '🔄 更新比對' : '✓ 已是最新'}
+          </button>
+        </div>
+      )}
+
       {isIdentical ? (
         <div className="diff-identical">
           <CheckCircle2 style={{ width: 28, height: 28, color: '#10b981' }} />
           <span>文件內容與原始版本完全一致</span>
         </div>
-      ) : diffMode === 'unified' ? (
-        /* Unified diff view */
-        <div className="diff-unified">
-          {edits.map((e, i) => (
-            <div key={i} className={'diff-line diff-' + e.type}>
-              <span className="diff-gutter-old">{e.type === 'add' ? '' : (e.oldIdx != null ? e.oldIdx + 1 : '')}</span>
-              <span className="diff-gutter-new">{e.type === 'del' ? '' : (e.newIdx != null ? e.newIdx + 1 : '')}</span>
-              <span className="diff-sign">{e.type === 'add' ? '+' : e.type === 'del' ? '−' : e.type === 'modify' ? '~' : ' '}</span>
-              <span className="diff-content">{e.type === 'add' ? (e.newLine || '') : e.type === 'modify' ? (e.newLine || '') : (e.oldLine || '')}</span>
-            </div>
-          ))}
-        </div>
       ) : (
-        /* Split diff view */
-        <div className="diff-split">
-          <div className="diff-split-header">
-            <div className="diff-split-title diff-split-old">📄 原始(解析者產出)</div>
-            <div className="diff-split-title diff-split-new">📝 目前(審核後)</div>
-          </div>
-          <div className="diff-split-body">
-            {buildPairs().map((p, i) => (
-              <div key={i} className="diff-split-row">
-                <div className={'diff-split-cell diff-split-old' + (p.type === 'change' && p.old != null ? ' diff-cell-del' : '') + (p.type === 'change' && p.old == null ? ' diff-cell-empty' : '')}>
-                  <span className="diff-gutter-s">{p.oldIdx != null ? p.oldIdx + 1 : ''}</span>
-                  <span className="diff-content-s">{p.old != null ? p.old : ''}</span>
-                </div>
-                <div className={'diff-split-cell diff-split-new' + (p.type === 'change' && p.new != null ? ' diff-cell-add' : '') + (p.type === 'change' && p.new == null ? ' diff-cell-empty' : '')}>
-                  <span className="diff-gutter-s">{p.newIdx != null ? p.newIdx + 1 : ''}</span>
-                  <span className="diff-content-s">{p.new != null ? p.new : ''}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <VirtualDiffList
+          items={diffMode === 'unified' ? edits : pairs}
+          mode={diffMode}
+          isCalculating={isCalculating}
+          manualMode={manualMode}
+          needsRefresh={needsRefresh}
+          onRefresh={triggerDiff}
+        />
       )}
 
       {/* Legend */}
       {!isIdentical && (
         <div className="diff-legend">
-          <span className="diff-legend-item"><span className="diff-legend-swatch" style={{ background: '#dcfce7', borderColor: '#86efac' }} />未變更</span>
-          <span className="diff-legend-item"><span className="diff-legend-swatch" style={{ background: '#bbf7d0', borderColor: '#4ade80' }} />++ 新增行</span>
-          <span className="diff-legend-item"><span className="diff-legend-swatch" style={{ background: '#fecaca', borderColor: '#f87171' }} />−− 刪除行</span>
-          <span className="diff-legend-item"><span className="diff-legend-swatch" style={{ background: '#fef3c7', borderColor: '#fbbf24' }} />~~ 微調行</span>
-          <span className="diff-legend-item diff-legend-tip">💡 變更幅度 = (新增 + 刪除) ÷ 原始行數,以解析者產出為基準衡量修改比例</span>
+          <span className="diff-legend-item"><span className="diff-legend-swatch swatch-eq" />未變更</span>
+          <span className="diff-legend-item"><span className="diff-legend-swatch swatch-add" />++ 新增行</span>
+          <span className="diff-legend-item"><span className="diff-legend-swatch swatch-del" />−− 刪除行</span>
+          <span className="diff-legend-item"><span className="diff-legend-swatch swatch-mod" />~~ 微調行</span>
+          <span className="diff-legend-item diff-legend-tip">💡 變更幅度 = (新增 + 刪除) ÷ 原始行數,上限 100%</span>
         </div>
       )}
     </div>
   );
 }
 
+/* ===== THEME HELPERS ===== */
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem('md-reviewer-theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+  } catch { /* localStorage unavailable */ }
+  return 'light';
+}
+
 /* ===== MAIN ===== */
 export default function MdReviewer() {
+  const [theme, setTheme] = useState(getInitialTheme);
   const [files, setFiles] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [popup, setPopup] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editingBlock, setEditingBlock] = useState(null);
   const [viewMode, setViewMode] = useState('preview');
+  const [showDashboard, setShowDashboard] = useState(false);
   const [mermaidReady, setMermaidReady] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
+
+  // Feature Flags
+  const flagDarkMode = useFeatureFlag('dark-mode');
+  const flagDashboard = useFeatureFlag('dashboard');
+
+  // Fetch remote flags once on mount
+  useEffect(() => { fetchRemoteFlags(); }, []);
+
+  // Sync theme to <html> element and localStorage
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('md-reviewer-theme', theme); } catch { /* ignore */ }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  }, []);
 
   // Load Mermaid.js from CDN
   useEffect(() => {
@@ -2366,6 +3022,7 @@ export default function MdReviewer() {
   }, []);
 
   const activeFile = files.find(f => f.id === activeId);
+  const { allStats: dashStats, computing: dashComputing } = useDashboardStats(files, flagDashboard && showDashboard);
   const sortedFiles = useMemo(() => [...files.filter(f => f.status === 'pending'), ...files.filter(f => f.status === 'done')], [files]);
   const doneCount = files.filter(f => f.status === 'done').length;
   const blocks = useMemo(() => activeFile ? splitMdBlocks(activeFile.content) : [], [activeFile?.content]);
@@ -2377,14 +3034,59 @@ export default function MdReviewer() {
     setFiles(prev => [...prev, { id, name, content, originalContent: content, marks: [], status: 'pending', updatedAt: new Date().toISOString() }]);
     setActiveId(id); setShowAdd(false);
   }, []);
-  const batchAddFile = useCallback((name, content) => {
-    const id = 'f-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    setFiles(prev => [...prev, { id, name, content, originalContent: content, marks: [], status: 'pending', updatedAt: new Date().toISOString() }]);
-    setActiveId(prev => prev || id);
+  const batchAddFile = useCallback((newFilesList) => {
+    const newEntries = newFilesList.map(f => ({
+      id: 'f-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      name: f.name,
+      content: f.content,
+      originalContent: f.content,
+      marks: [],
+      status: 'pending',
+      updatedAt: new Date().toISOString()
+    }));
+    setFiles(prev => [...prev, ...newEntries]);
+    if (newEntries.length > 0) setActiveId(prev => prev || newEntries[0].id);
   }, []);
   const updateFile = useCallback((id, updates) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates, updatedAt: new Date().toISOString() } : f));
   }, []);
+
+  // History Management
+  // History Management (DISABLED)
+  /*
+  const pushHistory = useCallback((fileId, currentContent) => {
+    setFiles(prev => prev.map(f => {
+      if (f.id !== fileId) return f;
+      const newHistory = [...(f.history || []), currentContent].slice(-5); // Keep last 5 steps (User request: 5 times)
+      return { ...f, history: newHistory, future: [] };
+    }));
+  }, []);
+
+  const undo = useCallback(() => {
+    if (!activeFile || !activeFile.history || activeFile.history.length === 0) return;
+    const previousContent = activeFile.history[activeFile.history.length - 1];
+    const newHistory = activeFile.history.slice(0, -1);
+    setFiles(prev => prev.map(f => f.id === activeFile.id ? { 
+      ...f, 
+      content: previousContent, 
+      history: newHistory, 
+      future: [activeFile.content, ...(f.future || [])].slice(-5) 
+    } : f));
+  }, [activeFile]);
+
+  const redo = useCallback(() => {
+    if (!activeFile || !activeFile.future || activeFile.future.length === 0) return;
+    const nextContent = activeFile.future[0];
+    const newFuture = activeFile.future.slice(1);
+    setFiles(prev => prev.map(f => f.id === activeFile.id ? { 
+      ...f, 
+      content: nextContent, 
+      history: [...(f.history || []), activeFile.content].slice(-5), 
+      future: newFuture 
+    } : f));
+  }, [activeFile]);
+  */
+
   const toggleDone = useCallback((id) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, status: f.status === 'done' ? 'pending' : 'done', updatedAt: new Date().toISOString() } : f));
   }, []);
@@ -2395,9 +3097,12 @@ export default function MdReviewer() {
     if (!activeFile) return;
     const idx = parseInt(blockId.replace('block-', ''));
     const cur = splitMdBlocks(activeFile.content);
-    if (idx >= 0 && idx < cur.length && cur[idx] !== newText) { cur[idx] = newText; updateFile(activeFile.id, { content: joinMdBlocks(cur) }); }
+    if (idx >= 0 && idx < cur.length && cur[idx] !== newText) {
+      // pushHistory(activeFile.id, activeFile.content); // UNDO DISABLED
+      cur[idx] = newText; updateFile(activeFile.id, { content: joinMdBlocks(cur) });
+    }
     setEditingBlock(null);
-  }, [activeFile, updateFile]);
+  }, [activeFile, updateFile]); // Removed pushHistory dependency
 
   const onBlockMark = useCallback((blockId, e) => {
     if (!activeFile) return;
@@ -2412,6 +3117,11 @@ export default function MdReviewer() {
     if (idx < 0 || idx >= cur.length) return;
 
     const stripPrefix = (t) => t.replace(/^#{1,6}\s+/, '').replace(/^- /, '').replace(/^> /, '').replace(/^\*\*(.+)\*\*$/, '$1').trim();
+
+    // Push history for all actions except copy
+    // if (action !== 'copy') {
+    //   pushHistory(activeFile.id, activeFile.content); // UNDO DISABLED
+    // }
 
     switch (action) {
       case 'addAbove': {
@@ -2469,7 +3179,7 @@ export default function MdReviewer() {
       case 'toPlain': { cur[idx] = stripPrefix(cur[idx]); updateFile(activeFile.id, { content: joinMdBlocks(cur) }); break; }
       default: break;
     }
-  }, [activeFile, updateFile]);
+  }, [activeFile, updateFile]); // Removed pushHistory dependency
 
   const saveMark = useCallback((issue) => {
     if (!popup || !activeFile) return;
@@ -2482,7 +3192,7 @@ export default function MdReviewer() {
     updateFile(activeFile.id, { marks: activeFile.marks.filter(m => m.blockId !== popup.blockId) }); setPopup(null);
   }, [popup, activeFile, updateFile]);
 
-  const doFormat = () => { if (activeFile) updateFile(activeFile.id, { content: formatMarkdown(activeFile.content) }); };
+  const doFormat = () => { if (activeFile) { /* pushHistory(activeFile.id, activeFile.content); */ updateFile(activeFile.id, { content: formatMarkdown(activeFile.content) }); } };
   const doExport = () => {
     const state = { version: 1, exportedAt: new Date().toISOString(), files: files.map(f => ({ name: f.name, content: f.content, originalContent: f.originalContent, marks: f.marks, status: f.status })) };
     safeDownload(JSON.stringify(state, null, 2), '審核狀態_' + new Date().toISOString().slice(0, 10) + '.json', 'application/json');
@@ -2493,17 +3203,85 @@ export default function MdReviewer() {
     reader.onload = (ev) => { try { const s = JSON.parse(ev.target.result); if (s.files) { const imp = s.files.map((f, i) => ({ id: 'f-' + Date.now() + '-' + i, name: f.name, content: f.content, originalContent: f.originalContent || f.content, marks: (f.marks || []).map(m => m.cellId && !m.blockId ? { ...m, blockId: m.cellId } : m), status: f.status || 'pending', updatedAt: new Date().toISOString() })); setFiles(imp); setActiveId(imp[0]?.id || null); } } catch { alert('JSON 格式錯誤'); } };
     reader.readAsText(file); e.target.value = '';
   };
-  const downloadFile = (f) => safeDownload(injectMarksToMd(f.content, f.marks), f.name, 'text/markdown;charset=utf-8');
+  const [downloadModal, setDownloadModal] = useState(null); // { file, type: 'md'|'zip' }
+
+  // Drag and drop handlers
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    try {
+      const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.md'));
+      if (droppedFiles.length === 0) return;
+      
+      // Process dropped files
+      let processed = 0;
+      const newFiles = [];
+      droppedFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onerror = () => {
+          console.error('Error reading file:', file.name);
+          processed++;
+          if (processed === droppedFiles.length && newFiles.length > 0) {
+            batchAddFile(newFiles);
+          }
+        };
+        reader.onload = (ev) => {
+          try {
+            // Sanitize content: remove BOM and null characters
+            let content = ev.target.result || '';
+            if (content.charCodeAt(0) === 0xFEFF) {
+              content = content.slice(1); // Remove UTF-8 BOM
+            }
+            content = content.replace(/\0/g, ''); // Remove null characters
+            
+            newFiles.push({ name: file.name, content });
+            processed++;
+            if (processed === droppedFiles.length) {
+              batchAddFile(newFiles);
+            }
+          } catch (err) {
+            console.error('Error processing file content:', file.name, err);
+            processed++;
+            if (processed === droppedFiles.length && newFiles.length > 0) {
+              batchAddFile(newFiles);
+            }
+          }
+        };
+        reader.readAsText(file, 'UTF-8');
+      });
+    } catch (err) {
+      console.error('Error in handleDrop:', err);
+    }
+  };
+
+  const downloadFile = (f) => {
+    // Show modal to allow filename editing before download
+    setDownloadModal({ file: f, name: f.name, type: 'md' });
+  };
+  
+  const confirmDownload = (name) => {
+    if (!downloadModal) return;
+    
+    if (downloadModal.type === 'md') {
+      const f = downloadModal.file;
+      safeDownload(injectMarksToMd(f.content, f.marks), name, 'text/markdown;charset=utf-8');
+    } else if (downloadModal.type === 'zip') {
+      // Zip download logic moved here if needed, or keep separate
+    }
+    setDownloadModal(null);
+  };
+
   const downloadZip = () => {
     const done = files.filter(f => f.status === 'done');
     if (!done.length) { alert('請先將檔案標記為「已完成」再下載 ZIP'); return; }
     safeDownloadBlob(createZip(done.map(f => ({ name: f.name, content: injectMarksToMd(f.content, f.marks) }))), '已審核_' + new Date().toISOString().slice(0, 10) + '.zip');
   };
 
+
   const styles = `
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap');
     html,body,#root{height:100%;height:100dvh;margin:0;padding:0;overflow:hidden}
-    :root{--bg:#f8f9fb;--surface:#ffffff;--surface2:#f1f3f7;--border:#e2e5ea;--border2:#d0d5dd;--text:#1a1d23;--text2:#4b5563;--text3:#9ca3af;--accent:#2563eb;--accent2:#3b82f6;--accent-bg:#eff6ff;--accent-border:#bfdbfe;--danger:#ef4444;--danger-bg:#fef2f2;--success:#10b981;--success-bg:#ecfdf5;--violet:#7c3aed;--violet-bg:#f5f3ff;--shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--shadow-lg:0 10px 25px rgba(0,0,0,.08),0 4px 10px rgba(0,0,0,.04);--shadow-xl:0 20px 50px rgba(0,0,0,.12);--radius:10px;--radius-sm:6px;--font:'Noto Sans TC',system-ui,sans-serif;--mono:'JetBrains Mono','SF Mono',Consolas,monospace}
+    /* CSS variables defined in index.css */
     *{box-sizing:border-box}
 
     .pv{line-height:1.8;color:var(--text);font-size:14.5px;font-family:var(--font);min-width:0;overflow-wrap:break-word}
@@ -2532,7 +3310,7 @@ export default function MdReviewer() {
     .pv table{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px;border:1px solid var(--border2);table-layout:auto}
     .pv table th,.pv table td{border:1px solid var(--border2);padding:8px 10px;text-align:left;vertical-align:top;word-break:break-word}
     .pv table th{background:var(--surface2);font-weight:600;color:var(--text2)}
-    .pv table tr:nth-child(even){background:#fafbfc}
+    .pv table tr:nth-child(even){background:var(--surface2)}
     .pv table strong{font-weight:600;color:var(--text)}
     .table-scroll-wrap{position:relative;margin:6px 0;border-radius:var(--radius-sm);width:100%;max-width:100%;overflow:hidden}
     .table-scroll-inner{overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;scrollbar-width:none;width:100%}
@@ -2592,7 +3370,47 @@ export default function MdReviewer() {
     .tbtn-gray{background:var(--surface2);color:var(--text2);border-color:var(--border)} .tbtn-gray:hover:not(:disabled){background:#e5e7eb}
     .tbtn-blue{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)} .tbtn-blue:hover:not(:disabled){background:#dbeafe}
     .tbtn-green{background:var(--success);color:#fff;border-color:var(--success)} .tbtn-green:hover:not(:disabled){background:#059669}
-    .source-editor{width:100%;height:100%;padding:24px;font-family:var(--mono);font-size:13px;line-height:1.75;border:none;resize:none;outline:none;background:#0d1117;color:#e6edf3;min-height:0}
+    .source-gutter{overflow:hidden;padding:24px 0;background:#0d1117;border-right:1px solid #21262d;user-select:none;flex-shrink:0;min-width:48px}
+    .source-gutter-line{font-family:var(--mono);font-size:13px;line-height:1.75;color:#484f58;text-align:right;padding:0 12px 0 12px}
+    .source-editor{width:100%;height:100%;padding:24px 24px 24px 16px;font-family:var(--mono);font-size:13px;line-height:1.75;border:none;resize:none;outline:none;background:#0d1117;color:#e6edf3;min-height:0}
+    .dash-container{padding:24px 32px;max-width:960px;margin:0 auto}
+    .dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+    .dash-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:var(--text)}
+    .dash-close{padding:6px;border-radius:6px;color:var(--text3);cursor:pointer;border:none;background:none;transition:all .15s} .dash-close:hover{background:var(--surface2);color:var(--text)}
+    .dash-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+    .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;border-top:3px solid var(--border);transition:box-shadow .15s} .dash-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+    .dash-card-value{font-size:22px;font-weight:700;line-height:1.2}
+    .dash-card-label{font-size:11px;color:var(--text3);margin-top:4px;font-weight:500}
+    .dash-card-sub{font-size:10px;margin-top:2px;font-weight:600}
+    .dash-section-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+    .dash-ranking{display:flex;flex-direction:column;gap:2px}
+    .dash-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;transition:background .12s} .dash-row:hover{background:var(--accent-bg)}
+    .dash-row-rank{width:20px;text-align:center;font-size:11px;font-weight:700;color:var(--text3)}
+    .dash-row-name{width:180px;font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+    .dash-row-bar-wrap{flex:1;height:18px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative;min-width:80px}
+    .dash-row-bar{height:100%;border-radius:4px;animation:dashBarIn .4s ease both}
+    @keyframes dashBarIn{from{width:0!important}}
+    .dash-row-pending{font-size:10px;color:var(--text3);line-height:18px;padding:0 8px}
+    .dash-row-identical{font-size:10px;color:#10b981;line-height:18px;padding:0 8px;font-weight:500}
+    .dash-row-pct{width:52px;text-align:right;font-size:12px;font-weight:700;font-family:var(--mono);flex-shrink:0}
+    .dash-row-counts{display:flex;gap:6px;width:100px;font-size:11px;font-weight:600;font-family:var(--mono);flex-shrink:0}
+    .dash-row-lines{width:48px;text-align:right;font-size:10px;color:var(--text3);flex-shrink:0}
+    .dash-empty{text-align:center;padding:32px;color:var(--text3);font-size:13px}
+    .dash-donut-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-bottom:16px}
+    .dash-donut-cell{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer;transition:all .15s} .dash-donut-cell:hover{box-shadow:0 4px 12px rgba(0,0,0,.08);border-color:var(--accent-border);transform:translateY(-2px)}
+    .dash-donut-wrap-sm{position:relative;width:100px;height:100px;flex-shrink:0}
+    .dash-donut-svg{width:100%;height:100%}
+    .dash-donut-seg{animation:dashDonutIn .6s ease both}
+    @keyframes dashDonutIn{from{stroke-dasharray:0 239}}
+    .dash-donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .dash-donut-pct{font-size:15px;font-weight:700;line-height:1.2;font-family:var(--mono)}
+    .dash-donut-fname{font-size:11px;font-weight:600;color:var(--text);max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+    .dash-donut-meta{display:flex;gap:6px;font-size:11px;font-weight:600;font-family:var(--mono)}
+    .dash-donut-lines{font-size:10px;color:var(--text3)}
+    .dash-legend-bar{display:flex;gap:16px;justify-content:center;margin-bottom:20px;padding:8px 0}
+    .dash-legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+    .dash-legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .dash-row-stacked{display:flex;height:100%;border-radius:4px;overflow:hidden;animation:dashBarIn .4s ease both}
     .table-editor{border:2px solid var(--accent2);border-radius:var(--radius);overflow:hidden;background:var(--accent-bg);box-shadow:0 0 0 4px rgba(59,130,246,.08)}
     .te-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--accent-border) var(--surface2);-webkit-overflow-scrolling:touch}
     .te-scroll::-webkit-scrollbar{height:7px}
@@ -2742,7 +3560,7 @@ export default function MdReviewer() {
     .ftoc-active .ftoc-text{color:var(--accent);font-weight:600}
     .ftoc-active .ftoc-level{box-shadow:0 0 0 1.5px currentColor}
 
-    .diff-viewer{font-family:var(--font);display:flex;flex-direction:column;min-height:100%}
+    .diff-viewer{font-family:var(--font);display:flex;flex-direction:column;height:100%}
     .diff-stats{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0;position:sticky;top:0;z-index:4}
     .diff-stats-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
     .diff-stats-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -2787,12 +3605,14 @@ export default function MdReviewer() {
     .diff-split-title{flex:1;padding:8px 12px;font-size:11px;font-weight:700;font-family:var(--font);color:var(--text2);background:var(--surface2);letter-spacing:.02em}
     .diff-split-title.diff-split-old{border-right:1px solid var(--border)}
     .diff-split-body{flex:1;overflow-y:auto}
-    .diff-split-row{display:flex;border-bottom:1px solid #f1f3f5}
+    .diff-split-row{display:flex;border-bottom:1px solid var(--border)}
     .diff-split-row:hover{filter:brightness(.97)}
     .diff-split-cell{flex:1;display:flex;min-height:24px;min-width:0}
     .diff-split-cell.diff-split-old{border-right:1px solid var(--border)}
     .diff-cell-del{background:#fef2f2;border-left:3px solid #f87171}
     .diff-cell-add{background:#dcfce7;border-left:3px solid #4ade80}
+    .diff-cell-modify{background:#fef3c7;border-left:3px solid #fbbf24}
+    .diff-cell-modify .diff-gutter-s{color:#d97706;background:#fef3c7}
     .diff-cell-empty{background:#f8f8f8}
     .diff-gutter-s{width:40px;flex-shrink:0;text-align:right;padding:1px 6px 1px 2px;color:#9ca3af;font-size:10.5px;user-select:none;border-right:1px solid var(--border)}
     .diff-cell-del .diff-gutter-s{color:#dc2626;background:#fecaca}
@@ -2803,23 +3623,65 @@ export default function MdReviewer() {
     .diff-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);font-family:var(--font)}
     .diff-legend-swatch{width:14px;height:14px;border-radius:3px;border:1.5px solid;flex-shrink:0}
     .diff-legend-tip{color:var(--text3);font-style:italic;margin-left:auto}
+    .swatch-eq{background:#dcfce7;border-color:#86efac}
+    .swatch-add{background:#bbf7d0;border-color:#4ade80}
+    .swatch-del{background:#fecaca;border-color:#f87171}
+    .swatch-mod{background:#fef3c7;border-color:#fbbf24}
+    
+    .diff-stale-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:8px}
+    .diff-stale-content{text-align:center;padding:32px;max-width:400px}
+    .diff-stale-icon{font-size:48px;margin-bottom:16px}
+    .diff-stale-title{font-size:18px;font-weight:700;color:#92400e;margin-bottom:8px}
+    .diff-stale-desc{font-size:13px;color:#78716c;line-height:1.5;margin-bottom:20px}
+    .diff-stale-btn{padding:12px 24px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(59,130,246,0.3);transition:transform 0.2s,box-shadow 0.2s}
+    .diff-stale-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,0.4)}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   `;
 
   return (
-    <div className="flex flex-col" style={{fontFamily:'var(--font)',background:'var(--bg)',height:'100dvh',minHeight:0,overflow:'hidden'}}>
+    <div 
+      className="flex flex-col"
+      data-theme={theme}
+      style={{fontFamily:'var(--font)',background:'var(--bg)',color:'var(--text)',height:'100dvh',minHeight:0,overflow:'hidden', transition: 'background 0.3s'}}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <style>{styles}</style>
+
+      {/* Canary build banner */}
+      {import.meta.env.VITE_CANARY && (
+        <div style={{background:'#fbbf24',color:'#78350f',textAlign:'center',padding:'2px 0',fontSize:11,fontFamily:'monospace',fontWeight:600,letterSpacing:'0.5px',zIndex:200,position:'relative'}}>
+          CANARY BUILD {(import.meta.env.VITE_BUILD_SHA || '').slice(0, 7)}
+        </div>
+      )}
+
+      {/* File Upload Overlay when dragging */}
+      <div className="fixed inset-0 bg-blue-500/10 pointer-events-none z-[100] hidden items-center justify-center backdrop-blur-sm group-hover:flex transition-opacity" id="drag-overlay">
+        <div className="bg-white/90 p-8 rounded-xl shadow-2xl flex flex-col items-center gap-4 border-4 border-blue-500 border-dashed">
+          <Upload className="w-16 h-16 text-blue-500" />
+          <span className="text-xl font-bold text-blue-600">釋放以新增 Markdown 檔案</span>
+        </div>
+      </div>
+      
       {/* Header */}
       <div style={{background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'8px clamp(10px,2%,16px)',boxShadow:'var(--shadow)',flexShrink:0}}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div style={{width:36,height:36,background:'linear-gradient(135deg,#2563eb,#7c3aed)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center'}}><FileText className="w-4.5 h-4.5 text-white" /></div>
-            <div><h1 style={{fontSize:15,fontWeight:700,color:'var(--text)',letterSpacing:'-.01em'}}>MD 批次審核</h1><p style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{files.length} 個檔案 · {doneCount} 已完成</p></div>
+            <div><h1 style={{fontSize:15,fontWeight:700,color:'var(--text)',letterSpacing:'-.01em'}}>MD 批次審核</h1><p style={{fontSize:11,color:'var(--text2)',marginTop:1}}>{files.length} 個檔案 · {doneCount} 已完成</p></div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {flagDarkMode && (<>
+              <button onClick={toggleTheme} className="tbtn tbtn-gray" title={theme === 'light' ? '切換深色模式' : '切換淺色模式'} aria-label="切換主題">
+                {theme === 'light' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+              </button>
+              <div className="w-px h-5 bg-gray-200 mx-1" />
+            </>)}
             <button onClick={doFormat} disabled={!activeFile} className="tbtn tbtn-violet" title="整理排版"><Wand2 className="w-3.5 h-3.5" />格式化</button>
+            {flagDashboard && <button onClick={() => setShowDashboard(true)} disabled={!files.length} className={'tbtn ' + (showDashboard ? 'tbtn-blue' : 'tbtn-gray')} title="差異儀表板"><BarChart3 className="w-3.5 h-3.5" />儀表板</button>}
             <div className="w-px h-5 bg-gray-200 mx-1" />
-            <button onClick={() => importRef.current?.click()} className="tbtn tbtn-gray" title="匯入審核狀態 (JSON)"><FileUp className="w-3.5 h-3.5" />匯入狀態</button>
-            <button onClick={doExport} disabled={!files.length} className="tbtn tbtn-gray" title="匯出審核進度 (JSON)"><FileDown className="w-3.5 h-3.5" />匯出狀態</button>
+            <button onClick={() => importRef.current?.click()} className="tbtn tbtn-gray" title="匯入先前備份的審核狀態 (.json 檔案)"><FileUp className="w-3.5 h-3.5" />匯入狀態</button>
+            <button onClick={doExport} disabled={!files.length} className="tbtn tbtn-gray" title="匯出目前的審核進度並下載備份 (.json 檔案)"><FileDown className="w-3.5 h-3.5" />匯出狀態</button>
             <div className="w-px h-5 bg-gray-200 mx-1" />
             <button onClick={() => { if (activeFile) downloadFile(activeFile); }} disabled={!activeFile} className="tbtn tbtn-blue" title="下載 .md(含標記)"><Download className="w-3.5 h-3.5" />下載 MD</button>
             <button onClick={downloadZip} disabled={!doneCount} className="tbtn tbtn-green" title="ZIP 下載已完成檔案"><FolderDown className="w-3.5 h-3.5" />全部 ZIP ({doneCount})</button>
@@ -2839,14 +3701,14 @@ export default function MdReviewer() {
             {!sortedFiles.length && <div className="p-6 text-center"><Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" /><p className="text-xs text-gray-400">點擊 + 新增檔案</p></div>}
             {sortedFiles.filter(f=>f.status==='pending').length>0 && <div className="px-3 py-1.5 text-xs text-gray-400 font-medium bg-gray-50 border-b">待審核 ({sortedFiles.filter(f=>f.status==='pending').length})</div>}
             {sortedFiles.filter(f=>f.status==='pending').map(f=>(
-              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview')}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
+              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
                 <button onClick={e=>{e.stopPropagation();toggleDone(f.id)}} className="text-gray-300 hover:text-green-500 shrink-0"><Circle className="w-4 h-4"/></button>
                 <span className="text-xs text-gray-700 truncate flex-1">{f.name}</span>
                 {f.marks.length>0&&<span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">{f.marks.length}</span>}
               </div>))}
             {sortedFiles.filter(f=>f.status==='done').length>0 && <div className="px-3 py-1.5 text-xs text-gray-400 font-medium bg-green-50 border-b">已完成 ({sortedFiles.filter(f=>f.status==='done').length})</div>}
             {sortedFiles.filter(f=>f.status==='done').map(f=>(
-              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview')}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
+              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
                 <button onClick={e=>{e.stopPropagation();toggleDone(f.id)}} className="text-green-500 hover:text-gray-400 shrink-0"><CheckCircle2 className="w-4 h-4"/></button>
                 <span className="text-xs text-gray-500 truncate flex-1 line-through">{f.name}</span>
                 {f.marks.length>0&&<span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">{f.marks.length}</span>}
@@ -2857,7 +3719,17 @@ export default function MdReviewer() {
         </div>
 
         {/* Main */}
-        {activeFile ? (
+        {flagDashboard && showDashboard ? (
+          <div className="flex-1" style={{minWidth:0,overflow:'auto',background:'var(--bg)'}}>
+            <DashboardOverview
+              files={files}
+              allStats={dashStats}
+              computing={dashComputing}
+              onSelectFile={(id) => { setActiveId(id); setShowDashboard(false); setViewMode('diff'); }}
+              onClose={() => setShowDashboard(false)}
+            />
+          </div>
+        ) : activeFile ? (
           <div className="flex-1 flex flex-col" style={{minWidth:0}}>
             <div className="bg-white border-b px-4 py-1.5 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -2871,8 +3743,10 @@ export default function MdReviewer() {
                     <span className="flex items-center gap-1"><Eye className="w-3 h-3"/>預覽編輯</span></button>
                   <button onClick={()=>setViewMode('source')} className={'px-2.5 py-1 text-xs rounded-md font-medium transition-colors '+(viewMode==='source'?'bg-white text-gray-800 shadow-sm':'text-gray-500')}>
                     <span className="flex items-center gap-1"><Code className="w-3 h-3"/>原始碼</span></button>
-                  <button onClick={()=>setViewMode('diff')} className={'px-2.5 py-1 text-xs rounded-md font-medium transition-colors '+(viewMode==='diff'?'bg-white text-gray-800 shadow-sm':'text-gray-500')}>
-                    <span className="flex items-center gap-1"><FileDown className="w-3 h-3"/>差異比對</span></button>
+                  {activeFile.originalContent && activeFile.originalContent !== activeFile.content && (
+                    <button onClick={()=>setViewMode('diff')} className={'px-2.5 py-1 text-xs rounded-md font-medium transition-colors '+(viewMode==='diff'?'bg-white text-gray-800 shadow-sm':'text-gray-500')}>
+                      <span className="flex items-center gap-1"><GitCompare className="w-3 h-3"/>差異比對</span></button>
+                  )}
                 </div>
                 <div className="w-px h-5 bg-gray-200"/>
                 {tocEntries.length > 0 && viewMode === 'preview' && (
@@ -2888,16 +3762,15 @@ export default function MdReviewer() {
             </div>
 
             {viewMode==='source' ? (
-              <div className="flex-1 overflow-hidden">
-                <textarea value={activeFile.content} onChange={e=>updateFile(activeFile.id,{content:e.target.value})} className="source-editor" spellCheck={false}/>
-              </div>
+              <SourceEditor value={activeFile.content} onChange={val=>updateFile(activeFile.id,{content:val})} />
+
             ) : viewMode==='diff' ? (
-              <div className="flex-1 overflow-auto" style={{background:'#fafbfc',minWidth:0}}>
+              <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0}}>
                 <DiffViewer originalContent={activeFile.originalContent || ''} currentContent={activeFile.content} fileName={activeFile.name} />
               </div>
             ) : (
               <div className="flex-1 flex" style={{minHeight:0,overflow:'hidden'}}>
-                <div className="flex-1 overflow-auto" style={{background:'#fafbfc',minWidth:0,padding:'clamp(8px,2%,16px)'}}>
+                <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0,padding:'clamp(8px,2%,16px)'}}>
                   <div className="doc-canvas">
                     <div className="text-xs text-gray-400 mb-4 flex items-center gap-4 pb-3 border-b border-dashed flex-wrap">
                       <span>📝 單擊 → 編輯</span>
@@ -2955,7 +3828,7 @@ export default function MdReviewer() {
             )}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center" style={{background:'#fafbfc'}}>
+          <div className="flex-1 flex items-center justify-center" style={{background:'var(--bg)'}}>
             <div className="text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><FileText className="w-8 h-8 text-gray-300"/></div>
               <p className="text-sm text-gray-400 mb-4">{files.length?'← 選擇檔案開始審核':'新增 .md 檔案開始審核'}</p>
@@ -2967,6 +3840,39 @@ export default function MdReviewer() {
 
       {popup&&<MarkPopup mark={popup.mark} position={popup.position} onSave={saveMark} onDelete={deleteMark} onClose={()=>setPopup(null)}/>}
       {showAdd&&<AddFileModal onAdd={addFile} onBatchAdd={batchAddFile} onClose={()=>setShowAdd(false)}/>}
+      
+      {/* Download Modal */}
+      {downloadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setDownloadModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-800 mb-4">下載檔案</h3>
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 mb-1 block">檔案名稱</label>
+              <input 
+                type="text" 
+                value={downloadModal.name} 
+                onChange={e => setDownloadModal({...downloadModal, name: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button 
+                onClick={() => setDownloadModal(null)} 
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                取消
+              </button>
+              <button 
+                onClick={() => confirmDownload(downloadModal.name)} 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                確認下載
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

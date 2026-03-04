@@ -42,6 +42,7 @@ vite.config.js.timestamp-*.mjs
 # Testing
 coverage/
 test_sample.md
+screenshots/
 
 # Editor directories and files
 *.suo

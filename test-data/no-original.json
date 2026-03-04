@@ -1,0 +1,1 @@
+{"version": 1, "files": [{"name": "new-file.md", "content": "# 新文件\n\n這是新建的檔案，沒有原始版本。\n\n## 內容\n\n新增的內容。", "marks": [], "status": "pending"}, {"name": "has-original.md", "content": "# 有原始版\n\n修改後的內容。", "originalContent": "# 有原始版\n\n原始的內容。", "marks": [], "status": "pending"}]}
