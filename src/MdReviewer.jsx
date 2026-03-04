@@ -2983,11 +2983,18 @@ export default function MdReviewer() {
   // Fetch remote flags once on mount
   useEffect(() => { fetchRemoteFlags(); }, []);
 
+  // When dark-mode flag is OFF, force light theme (prevent localStorage leak from canary)
+  useEffect(() => {
+    if (!flagDarkMode && theme !== 'light') setTheme('light');
+  }, [flagDarkMode]);
+
   // Sync theme to <html> element and localStorage
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try { localStorage.setItem('md-reviewer-theme', theme); } catch { /* ignore */ }
-  }, [theme]);
+    if (flagDarkMode) {
+      try { localStorage.setItem('md-reviewer-theme', theme); } catch { /* ignore */ }
+    }
+  }, [theme, flagDarkMode]);
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
