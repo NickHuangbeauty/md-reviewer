@@ -243,7 +243,7 @@ function parseBlockToHtml(text) {
       const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return '<div class="mermaid-block" data-mermaid="' + esc(code).replace(/"/g, '&quot;') + '">'
         + '<div class="mermaid-header"><span class="mermaid-badge">◆ Mermaid</span><span class="mermaid-hint">圖表預覽</span></div>'
-        + '<div class="mermaid-body"><pre class="mermaid">' + esc(code) + '</pre></div>'
+        + '<div class="mermaid-body"><pre class="mermaid-src">' + esc(code) + '</pre></div>'
         + '</div>';
     }
     const highlighted = highlightCode(code, lang);
@@ -1287,6 +1287,11 @@ function extractNodeIdsFromLine(line) {
   const partM = t.match(/^\s*(?:participant|actor)\s+(\S+)/i);
   if (partM) ids.add(partM[1]);
 
+  // Pie chart: "Label" : value
+  const pieRe = /^\s*"([^"]+)"\s*:/;
+  const pieM = t.match(pieRe);
+  if (pieM) ids.add(pieM[1]);
+
   // Clean out common false-positive keywords
   ['TD', 'TB', 'BT', 'RL', 'LR', 'BR', 'px', 'fill', 'stroke', 'color', 'width',
    'height', 'Note', 'note', 'over', 'left', 'right', 'of', 'loop', 'alt', 'opt',
@@ -1344,7 +1349,7 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
     clearTimeout(renderTimer.current);
     renderTimer.current = setTimeout(() => {
       const id = 'mme-' + Date.now();
-      window.mermaid.render(id, src.trim()).then(({ svg: s }) => {
+      enqueueMermaidRender(id, src.trim()).then(({ svg: s }) => {
         setSvg(s); setError('');
       }).catch((err) => {
         setError(String(err?.message || err).slice(0, 120));
@@ -1479,8 +1484,40 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
   );
 }
 
+/* ===== Mermaid Render Queue (serialize to avoid concurrent render crashes) ===== */
+const _mmQueue = [];
+let _mmRunning = false;
+/** Remove Mermaid's temp DOM containers for a given render id */
+function cleanupMermaidDom(id) {
+  try { document.getElementById(id)?.remove(); } catch {}
+  try { document.getElementById('d' + id)?.remove(); } catch {}
+}
+function enqueueMermaidRender(id, code) {
+  return new Promise((resolve, reject) => {
+    _mmQueue.push({ id, code, resolve, reject });
+    _drainMmQueue();
+  });
+}
+async function _drainMmQueue() {
+  if (_mmRunning || !_mmQueue.length) return;
+  _mmRunning = true;
+  while (_mmQueue.length) {
+    const { id, code, resolve, reject } = _mmQueue.shift();
+    try {
+      // Small delay between renders — gives browser a tick to clean up stale Mermaid DOM nodes
+      await new Promise(r => requestAnimationFrame(r));
+      const result = await window.mermaid.render(id, code);
+      resolve(result);
+    } catch (err) {
+      cleanupMermaidDom(id);
+      reject(err);
+    }
+  }
+  _mmRunning = false;
+}
+
 /* ===== INLINE BLOCK ===== */
-function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction }) {
+function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction, mermaidReady }) {
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const mouseDownRef = useRef(null);
@@ -1513,30 +1550,29 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     if (!isEditing && isMermaid && !mermaidSvg && !mermaidErr && window.mermaid) {
       const code = raw.replace(/^```mermaid\n/i, '').replace(/\n```$/, '').trim();
       if (!code) return;
+      let cancelled = false;
       const id = 'mm-' + blockId.replace(/[^a-zA-Z0-9]/g, '') + '-' + Date.now();
-      try {
-        window.mermaid.render(id, code).then(({ svg }) => {
-          setMermaidSvg(svg);
-        }).catch((err) => {
-          setMermaidErr(String(err?.message || err).slice(0, 200));
-          // Clean up error SVG that mermaid injects into DOM
-          const errEl = document.getElementById(id);
-          if (errEl) errEl.remove();
-          const dErrEl = document.getElementById('d' + id);
-          if (dErrEl) dErrEl.remove();
-        });
-      } catch (e) {
-        setMermaidErr(String(e?.message || e).slice(0, 200));
-      }
-      // Also remove any stray mermaid error containers
-      return () => {
-        try {
-          const el = document.getElementById(id);
-          if (el) el.remove();
-        } catch {}
-      };
+      enqueueMermaidRender(id, code).then(({ svg }) => {
+        if (!cancelled) setMermaidSvg(svg);
+      }).catch((err) => {
+        if (!cancelled) setMermaidErr(String(err?.message || err).slice(0, 200));
+        cleanupMermaidDom(id);
+      });
+      return () => { cancelled = true; cleanupMermaidDom(id); };
     }
-  }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId]);
+  }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId, mermaidReady]);
+
+  // Mermaid SVG as data URL — avoids both HTML parser foreignObject issue and DOM injection race conditions.
+  const mermaidDataUrl = useMemo(() => {
+    if (!mermaidSvg) return null;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(mermaidSvg);
+  }, [mermaidSvg]);
+
+  // Strip mermaid-body from HTML (for when we render mermaid via React elements instead)
+  const mermaidStrippedHtml = useMemo(() => {
+    if (!isMermaid || (!mermaidSvg && !mermaidErr)) return null;
+    return html.replace(/<div class="mermaid-body">[\s\S]*?<\/div>/, '');
+  }, [html, isMermaid, mermaidSvg, mermaidErr]);
 
   // Table scroll: measure container, set explicit width, sync custom scrollbar
   useEffect(() => {
@@ -1759,17 +1795,26 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
         onMouseDown={handlePreviewMouseDown}
         onMouseUp={handlePreviewMouseUp}
         onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(blockId, e); }}>
-        <div className="pv" dangerouslySetInnerHTML={{ __html: isMermaid && mermaidSvg
-          ? html.replace(/<div class="mermaid-body">[\s\S]*?<\/div>/, '<div class="mermaid-body mermaid-rendered">' + mermaidSvg + '</div>')
-          : isMermaid && mermaidErr
-          ? html.replace(/<div class="mermaid-body">[\s\S]*?<\/div>/,
-            '<div class="mermaid-body mermaid-error">'
-            + '<div class="mm-err-icon">âš </div>'
-            + '<div class="mm-err-title">Mermaid 語法錯誤</div>'
-            + '<div class="mm-err-msg">' + mermaidErr.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>'
-            + '<div class="mm-err-hint">點擊此區塊編輯修正語法</div>'
-            + '</div>')
-          : html }} />
+        {isMermaid && mermaidSvg ? (
+          <div className="pv">
+            <div dangerouslySetInnerHTML={{ __html: mermaidStrippedHtml }} />
+            <div className="mermaid-body mermaid-rendered">
+              <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
+            </div>
+          </div>
+        ) : isMermaid && mermaidErr ? (
+          <div className="pv">
+            <div dangerouslySetInnerHTML={{ __html: mermaidStrippedHtml }} />
+            <div className="mermaid-body mermaid-error">
+              <div className="mm-err-icon">{'⚠'} </div>
+              <div className="mm-err-title">Mermaid 語法錯誤</div>
+              <div className="mm-err-msg">{mermaidErr}</div>
+              <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
+            </div>
+          </div>
+        ) : (
+          <div className="pv" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
         {hasMark && (
           <div className="mark-badge" onClick={(e) => { e.stopPropagation(); onMark(blockId, e); }}>
             <AlertCircle style={{ width: 12, height: 12 }} /> {blockMarks.length}
@@ -3448,7 +3493,7 @@ export default function MdReviewer() {
     .mermaid-badge{font-size:11px;font-weight:700;color:#7c3aed;letter-spacing:.02em;font-family:var(--font)}
     .mermaid-hint{font-size:10px;color:#a78bfa;font-family:var(--font)}
     .mermaid-body{padding:20px;min-height:60px;display:flex;align-items:center;justify-content:center;background:white;margin:8px;border-radius:8px;border:1px solid #ede9fe}
-    .mermaid-body pre.mermaid{font-size:12px;color:#6b7280;font-family:var(--mono);white-space:pre-wrap;text-align:center}
+    .mermaid-body pre.mermaid-src{font-size:12px;color:#6b7280;font-family:var(--mono);white-space:pre-wrap;text-align:center}
     .mermaid-body.mermaid-rendered{padding:16px}
     .mermaid-body.mermaid-rendered svg{max-width:100%;height:auto}
     .mermaid-body.mermaid-error{flex-direction:column;gap:6px;padding:20px;background:#fef7f7;border-color:#fecaca}
@@ -3887,7 +3932,7 @@ export default function MdReviewer() {
                       <span>⋮⋮ 左側手柄 → 區塊操作</span>
                     </div>
                     {blocks.map((block, i) => (
-                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction}/>
+                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction} mermaidReady={mermaidReady}/>
                     ))}
                     {!blocks.length && <div className="text-center py-10 text-gray-400 text-sm">檔案內容為空</div>}
                   </div>
