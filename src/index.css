@@ -200,6 +200,57 @@ body {
 [data-theme='dark'] .diff-gutter-s { color: #8b949e; border-right-color: #30363d; }
 [data-theme='dark'] .diff-content-s { color: #e6edf3; }
 
+/* Fold row — gradient fade */
+.diff-fold-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text3);
+  background: linear-gradient(180deg, rgba(128,128,128,0.10) 0%, rgba(128,128,128,0.03) 50%, rgba(128,128,128,0.10) 100%);
+  border-top: 1.5px dashed var(--border2);
+  border-bottom: 1.5px dashed var(--border2);
+  transition: background 0.2s, color 0.2s;
+  user-select: none;
+}
+.diff-fold-row:hover {
+  background: linear-gradient(180deg, rgba(59,130,246,0.12) 0%, rgba(59,130,246,0.04) 50%, rgba(59,130,246,0.12) 100%);
+  color: var(--accent);
+}
+.diff-fold-expanded {
+  background: linear-gradient(180deg, rgba(59,130,246,0.08) 0%, rgba(59,130,246,0.02) 50%, rgba(59,130,246,0.08) 100%);
+  border-style: solid;
+  color: var(--accent);
+}
+.diff-fold-expanded:hover {
+  background: linear-gradient(180deg, rgba(59,130,246,0.14) 0%, rgba(59,130,246,0.05) 50%, rgba(59,130,246,0.14) 100%);
+}
+.diff-fold-icon { font-size: 14px; letter-spacing: 2px; opacity: 0.6; }
+.diff-fold-hint { font-size: 11px; opacity: 0; transition: opacity 0.2s; }
+.diff-fold-row:hover .diff-fold-hint { opacity: 0.7; }
+
+[data-theme='dark'] .diff-fold-row {
+  background: linear-gradient(180deg, rgba(128,128,128,0.12) 0%, rgba(128,128,128,0.04) 50%, rgba(128,128,128,0.12) 100%);
+}
+[data-theme='dark'] .diff-fold-row:hover {
+  background: linear-gradient(180deg, rgba(96,165,250,0.15) 0%, rgba(96,165,250,0.05) 50%, rgba(96,165,250,0.15) 100%);
+}
+
+/* Revealed lines — expanded from fold, subtle tinted background */
+.diff-line.diff-revealed,
+.diff-split-row.diff-revealed {
+  background: #e8f1fd !important;
+  border-left: 2.5px solid rgba(59, 130, 246, 0.45);
+}
+[data-theme='dark'] .diff-line.diff-revealed,
+[data-theme='dark'] .diff-split-row.diff-revealed {
+  background: rgba(96, 165, 250, 0.12) !important;
+  border-left: 2.5px solid rgba(96, 165, 250, 0.45);
+}
+
 /* Dark mode inline-style color overrides for .pv content */
 [data-theme='dark'] .pv .cd { background: var(--surface2); border-color: var(--border); color: #f87171; }
 [data-theme='dark'] .pv .bq { border-left-color: var(--accent); background: var(--accent-bg); color: #93c5fd; }

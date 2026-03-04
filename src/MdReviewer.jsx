@@ -2191,7 +2191,7 @@ function DownloadConfirmModal({ filename, onConfirm, onClose }) {
 }
 
 // Virtual scrolling component for large diffs
-function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, needsRefresh, onRefresh }) {
+function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, needsRefresh, onRefresh, onExpandFold }) {
   const containerRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(400);
@@ -2226,7 +2226,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
   
   // Render a single unified row
   const renderUnifiedRow = (e, i) => (
-    <div key={startIndex + i} className={'diff-line diff-' + e.type} style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
+    <div key={startIndex + i} className={'diff-line diff-' + e.type + (e._revealed ? ' diff-revealed' : '')} style={{ height: useVirtual ? ROW_HEIGHT : undefined, opacity: e._fade ? 0.35 : undefined, transition: e._fade ? 'opacity 0.3s' : undefined }}>
       <span className="diff-gutter-old">{e.type === 'add' ? '' : (e.oldIdx != null ? e.oldIdx + 1 : '')}</span>
       <span className="diff-gutter-new">{e.type === 'del' ? '' : (e.newIdx != null ? e.newIdx + 1 : '')}</span>
       <span className="diff-sign">{e.type === 'add' ? '+' : e.type === 'del' ? '−' : e.type === 'modify' ? '~' : ' '}</span>
@@ -2245,7 +2245,7 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
       return '';
     };
     return (
-      <div key={startIndex + i} className="diff-split-row" style={useVirtual ? { height: ROW_HEIGHT } : undefined}>
+      <div key={startIndex + i} className={'diff-split-row' + (p._revealed ? ' diff-revealed' : '')} style={{ height: useVirtual ? ROW_HEIGHT : undefined, opacity: p._fade ? 0.35 : undefined, transition: p._fade ? 'opacity 0.3s' : undefined }}>
         <div className={'diff-split-cell diff-split-old' + cellClass('old')}>
           <span className="diff-gutter-s">{p.oldIdx != null ? p.oldIdx + 1 : ''}</span>
           <span className="diff-content-s">{p.old != null ? p.old : ''}</span>
@@ -2257,7 +2257,21 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
       </div>
     );
   };
-  
+
+  // Render a fold row (collapsed/expanded unchanged lines)
+  const renderFoldRow = (e, i) => (
+    <div
+      key={'fold-' + e.foldId}
+      className={'diff-fold-row' + (e.expanded ? ' diff-fold-expanded' : '')}
+      onClick={() => onExpandFold(e.foldId)}
+      style={{ height: ROW_HEIGHT }}
+    >
+      <span className="diff-fold-icon">{e.expanded ? '▴' : '⋯'}</span>
+      <span className="diff-fold-label">{e.expanded ? `▾ 收合 ${e.count} 行` : `收合 ${e.count} 行未變更`}</span>
+      <span className="diff-fold-hint">{e.expanded ? '點擊收合' : '點擊展開'}</span>
+    </div>
+  );
+
   return (
     <div className="diff-virtual-container" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Blur overlay when diff is stale in manual mode */}
@@ -2369,13 +2383,15 @@ function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, nee
               <div style={{ height: totalHeight, position: 'relative', minWidth: 'fit-content' }}>
                 <div style={{ position: 'absolute', top: offsetY, left: 0, minWidth: '100%' }}>
                   {visibleItems.map((item, i) =>
-                    mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
+                    item.type === 'fold' ? renderFoldRow(item, i)
+                    : mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
                   )}
                 </div>
               </div>
             ) : (
               items.map((item, i) =>
-                mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
+                item.type === 'fold' ? renderFoldRow(item, i)
+                : mode === 'unified' ? renderUnifiedRow(item, i) : renderSplitRow(item, i)
               )
             )}
           </div>
@@ -2696,6 +2712,47 @@ function SourceEditor({ value, onChange }) {
   );
 }
 
+/* ===== DIFF FOLD HELPERS ===== */
+const CONTEXT_LINES = 3;   // eq lines to keep near changes
+const FOLD_THRESHOLD = 5;  // min consecutive eq to trigger fold
+
+function buildFoldedItems(items, expandedFolds) {
+  const result = [];
+  let foldId = 0;
+  let i = 0;
+  while (i < items.length) {
+    if (items[i].type === 'eq') {
+      const eqStart = i;
+      while (i < items.length && items[i].type === 'eq') i++;
+      const eqLen = i - eqStart;
+      const hiddenCount = eqLen - 2 * CONTEXT_LINES;
+      if (eqLen >= FOLD_THRESHOLD && hiddenCount > 0) {
+        const currentFoldId = foldId++;
+        if (expandedFolds.has(currentFoldId)) {
+          // Expanded: before context + collapse marker + revealed hidden lines + after context
+          for (let k = eqStart; k < eqStart + CONTEXT_LINES; k++) result.push(items[k]);
+          result.push({ type: 'fold', foldId: currentFoldId, count: hiddenCount, expanded: true });
+          for (let k = eqStart + CONTEXT_LINES; k < i - CONTEXT_LINES; k++) result.push({ ...items[k], _revealed: true });
+          for (let k = i - CONTEXT_LINES; k < i; k++) result.push(items[k]);
+        } else {
+          // Collapsed: before context (last faded) + fold + after context (first faded)
+          for (let k = eqStart; k < eqStart + CONTEXT_LINES - 1; k++) result.push(items[k]);
+          result.push({ ...items[eqStart + CONTEXT_LINES - 1], _fade: 'out' });
+          result.push({ type: 'fold', foldId: currentFoldId, count: hiddenCount });
+          result.push({ ...items[i - CONTEXT_LINES], _fade: 'in' });
+          for (let k = i - CONTEXT_LINES + 1; k < i; k++) result.push(items[k]);
+        }
+      } else {
+        for (let k = eqStart; k < i; k++) result.push(items[k]);
+      }
+    } else {
+      result.push(items[i]);
+      i++;
+    }
+  }
+  return result;
+}
+
 function DiffViewer({ originalContent, currentContent, fileName }) {
   const [diffMode, setDiffMode] = useState('unified'); // unified | split
   const [edits, setEdits] = useState([]);
@@ -2703,6 +2760,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
   const [progress, setProgress] = useState(0);
   const [manualMode, setManualMode] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [expandedFolds, setExpandedFolds] = useState(new Set());
   const workerRef = useRef(null);
   const requestIdRef = useRef(0);
   
@@ -2768,6 +2826,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         requestIdRef.current++;
         setIsCalculating(true);
         setEdits([]); // Reset edits for streaming
+        setExpandedFolds(new Set());
         setProgress(0);
         workerRef.current.postMessage({
           id: requestIdRef.current,
@@ -2863,6 +2922,17 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
     return result;
   }, [edits]);
 
+  // Fold consecutive unchanged lines
+  const handleExpandFold = useCallback((foldId) => {
+    setExpandedFolds(prev => {
+      const next = new Set(prev);
+      if (next.has(foldId)) next.delete(foldId); else next.add(foldId);
+      return next;
+    });
+  }, []);
+  const foldedEdits = useMemo(() => diffMode === 'unified' ? buildFoldedItems(edits, expandedFolds) : [], [edits, expandedFolds, diffMode]);
+  const foldedPairs = useMemo(() => diffMode === 'split' ? buildFoldedItems(pairs, expandedFolds) : [], [pairs, expandedFolds, diffMode]);
+
   const isIdentical = stats.changed === 0;
   const actualOldLines = useMemo(() => originalContent ? originalContent.split('\n').length : 0, [originalContent]);
 
@@ -2950,12 +3020,13 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         </div>
       ) : (
         <VirtualDiffList
-          items={diffMode === 'unified' ? edits : pairs}
+          items={diffMode === 'unified' ? foldedEdits : foldedPairs}
           mode={diffMode}
           isCalculating={isCalculating}
           manualMode={manualMode}
           needsRefresh={needsRefresh}
           onRefresh={triggerDiff}
+          onExpandFold={handleExpandFold}
         />
       )}
 
