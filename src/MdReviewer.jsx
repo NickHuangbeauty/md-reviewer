@@ -243,7 +243,6 @@ function parseBlockToHtml(text) {
       const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return '<div class="mermaid-block" data-mermaid="' + esc(code).replace(/"/g, '&quot;') + '">'
         + '<div class="mermaid-header"><span class="mermaid-badge">◆ Mermaid</span><span class="mermaid-hint">圖表預覽</span></div>'
-        + '<div class="mermaid-body"><pre class="mermaid-src">' + esc(code) + '</pre></div>'
         + '</div>';
     }
     const highlighted = highlightCode(code, lang);
@@ -1586,12 +1585,6 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(mermaidSvg);
   }, [mermaidSvg]);
 
-  // Strip mermaid-body from HTML (for when we render mermaid via React elements instead)
-  const mermaidStrippedHtml = useMemo(() => {
-    if (!isMermaid || (!mermaidSvg && !mermaidErr)) return null;
-    return html.replace(/<div class="mermaid-body">[\s\S]*?<\/div>/, '');
-  }, [html, isMermaid, mermaidSvg, mermaidErr]);
-
   // Table scroll: measure container, set explicit width, sync custom scrollbar
   useEffect(() => {
     if (isEditing || !previewRef.current) return;
@@ -1813,20 +1806,25 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
         onMouseDown={handlePreviewMouseDown}
         onMouseUp={handlePreviewMouseUp}
         onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(blockId, e); }}>
-        {isMermaid && (mermaidSvg || mermaidErr) ? (
+        {isMermaid ? (
           <div className="pv">
-            <div dangerouslySetInnerHTML={{ __html: mermaidStrippedHtml }} />
-            <div className={`mermaid-body ${mermaidSvg ? 'mermaid-rendered' : 'mermaid-error'}`}>
-              {mermaidSvg
-                ? <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
-                : <>
-                    <div className="mm-err-icon">{'⚠'} </div>
-                    <div className="mm-err-title">Mermaid 語法錯誤</div>
-                    <div className="mm-err-msg">{mermaidErr}</div>
-                    <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
-                  </>
-              }
-            </div>
+            <div dangerouslySetInnerHTML={{ __html: html }} />
+            {mermaidSvg ? (
+              <div className="mermaid-body mermaid-rendered">
+                <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
+              </div>
+            ) : mermaidErr ? (
+              <div className="mermaid-body mermaid-error">
+                <div className="mm-err-icon">{'\u26A0'} </div>
+                <div className="mm-err-title">Mermaid 語法錯誤</div>
+                <div className="mm-err-msg">{mermaidErr}</div>
+                <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
+              </div>
+            ) : (
+              <div className="mermaid-body">
+                <pre className="mermaid-src">{extractMermaidCode(raw)}</pre>
+              </div>
+            )}
           </div>
         ) : (
           <div className="pv" dangerouslySetInnerHTML={{ __html: html }} />
