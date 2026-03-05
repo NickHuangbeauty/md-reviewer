@@ -15,18 +15,17 @@ const ERR = {
   // BLOCKED_ORIGIN — console.warn only, no response (avoid info leak)
 };
 
-// ===== Origin Whitelist =====
+// ===== Origin Whitelist (cached at module level — env var is a build-time constant) =====
 
-function getAllowedOrigins() {
+const ALLOWED_ORIGINS = (() => {
   const raw = import.meta.env.VITE_ALLOWED_ORIGINS || '';
   if (!raw) return null; // null = accept all origins (POC/dev mode)
-  return raw.split(',').map(s => s.trim()).filter(Boolean);
-}
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
+})();
 
 function isOriginAllowed(origin) {
-  const allowed = getAllowedOrigins();
-  if (!allowed) return true; // dev mode: accept all
-  return allowed.includes(origin);
+  if (!ALLOWED_ORIGINS) return true; // dev mode: accept all
+  return ALLOWED_ORIGINS.has(origin);
 }
 
 // ===== Schema Validation =====
@@ -80,20 +79,19 @@ export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
     const msg = event.data;
     if (!msg || typeof msg !== 'object' || msg.source !== HOST_SOURCE) return;
 
-    // Payload size guard (Blob.size for accurate byte count)
-    try {
-      const size = new Blob([JSON.stringify(msg)]).size;
-      if (size > MAX_PAYLOAD_BYTES) {
-        sendToHost('error', msg.requestId, {
-          code: ERR.PAYLOAD_TOO_LARGE,
-          message: `Payload ${(size / 1024 / 1024).toFixed(1)}MB exceeds 5MB limit`,
-        });
-        return;
-      }
-    } catch { return; }
-
     switch (msg.type) {
       case 'setFiles': {
+        // Payload size guard — only for setFiles (the only inbound large payload)
+        try {
+          const size = JSON.stringify(msg.payload).length * 2; // conservative UTF-16 estimate
+          if (size > MAX_PAYLOAD_BYTES) {
+            sendToHost('error', msg.requestId, {
+              code: ERR.PAYLOAD_TOO_LARGE,
+              message: `Payload ~${(size / 1024 / 1024).toFixed(1)}MB exceeds 5MB limit`,
+            });
+            return;
+          }
+        } catch { return; }
         const err = validateSetFilesPayload(msg.payload);
         if (err) {
           sendToHost('error', msg.requestId, { code: ERR.INVALID_SCHEMA, message: err });

@@ -3153,6 +3153,7 @@ export default function MdReviewer() {
       instanceId: 'md-reviewer-' + Date.now(),
       onSetFiles: (incomingFiles) => {
         const uid = () => crypto.randomUUID?.() || ('f-' + Math.random().toString(36).slice(2, 10));
+        const now = new Date().toISOString();
         const imp = incomingFiles.map(f => ({
           id: uid(),
           name: f.name,
@@ -3160,7 +3161,7 @@ export default function MdReviewer() {
           originalContent: f.originalContent || f.content,
           marks: [],
           status: 'pending',
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         }));
         setFiles(imp);
         setActiveId(imp[0]?.id || null);
