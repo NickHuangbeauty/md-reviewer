@@ -43,6 +43,7 @@ vite.config.js.timestamp-*.mjs
 coverage/
 test_sample.md
 screenshots/
+tests/screenshots/
 test-data-scenarios/
 .playwright-mcp/
 

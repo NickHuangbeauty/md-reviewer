@@ -8,7 +8,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = join(__dirname, 'screenshots');
+const SCREENSHOT_DIR = join(__dirname, '..', 'screenshots');
 const TARGET_URL = process.env.TARGET_URL || 'http://localhost:5173/md-reviewer/';
 const TIMEOUT = 30_000;
 
