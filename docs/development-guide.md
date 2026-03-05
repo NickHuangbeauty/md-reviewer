@@ -4,21 +4,21 @@
 
 ```mermaid
 flowchart TD
-    A[本地開發] --> B[設計 BDD 測試案例]
-    B --> C[本地測試驗證]
-    C -->|測試失敗| A
-    C -->|全部通過| D[git commit]
-    D --> E[/simplify 程式碼審查]
-    E -->|發現問題| F[修復問題]
-    F --> G[git commit 修復]
+    A["本地開發"] --> B["設計 BDD 測試案例"]
+    B --> C["本地測試驗證"]
+    C -->|"測試失敗"| A
+    C -->|"全部通過"| D["git commit"]
+    D --> E["/simplify 程式碼審查"]
+    E -->|"發現問題"| F["修復問題"]
+    F --> G["git commit 修復"]
     G --> E
-    E -->|審查通過| H[git push origin main]
-    H --> I[GitHub Actions 自動部署]
-    I --> J[金絲雀版測試]
-    J -->|測試失敗| K[本地修復 → 重新走流程]
-    J -->|測試通過| L[正式版確認]
-    L -->|確認正常| M[上線完成]
-    L -->|發現問題| K
+    E -->|"審查通過"| H["git push origin main"]
+    H --> I["GitHub Actions 自動部署"]
+    I --> J["金絲雀版測試"]
+    J -->|"測試失敗"| K["本地修復, 重新走流程"]
+    J -->|"測試通過"| L["正式版確認"]
+    L -->|"確認正常"| M["上線完成"]
+    L -->|"發現問題"| K
 
     style A fill:#dbeafe,stroke:#3b82f6
     style B fill:#fef3c7,stroke:#f59e0b
@@ -131,12 +131,12 @@ Push 後 GitHub Actions 自動觸發部署。
 
 ```mermaid
 flowchart LR
-    A[push to main] --> B[npm ci]
-    B --> C[npm run build]
-    B --> D[npm run build:canary]
-    C --> E[dist/]
-    D --> F[dist/canary/]
-    E --> G[GitHub Pages]
+    A["push to main"] --> B["npm ci"]
+    B --> C["npm run build"]
+    B --> D["npm run build:canary"]
+    C --> E["dist/"]
+    D --> F["dist/canary/"]
+    E --> G["GitHub Pages"]
     F --> G
 
     style A fill:#e0e7ff,stroke:#6366f1
@@ -173,15 +173,15 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Layer1["Layer 1: Runtime 斷言"]
-        V[canary.js<br/>12 項驗證規則<br/>Always-on]
+        V["canary.js - 12 項驗證規則 - Always-on"]
     end
 
     subgraph Layer2["Layer 2: 子目錄部署"]
-        C[/md-reviewer/canary/<br/>獨立環境 + Source Maps<br/>VITE_CANARY=true]
+        C["/md-reviewer/canary/ - 獨立環境 + Source Maps - VITE_CANARY=true"]
     end
 
     subgraph Layer3["Layer 3: 排程監控"]
-        T[canary-monitor.yml<br/>每日 08:00 UTC<br/>27 單元 + 7 E2E 測試]
+        T["canary-monitor.yml - 每日 08:00 UTC - 27 單元 + 7 E2E 測試"]
     end
 
     Layer1 --> Layer2 --> Layer3
@@ -205,11 +205,11 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    Q{Flag 查詢} --> G{Gist JSON 有設定?}
-    G -->|是| R1[使用 Gist 值]
-    G -->|否| C{是 Canary Build?}
-    C -->|是| R2[全部 true]
-    C -->|否| R3[使用預設值<br/>全部 false]
+    Q{"Flag 查詢"} --> G{"Gist JSON 有設定?"}
+    G -->|"是"| R1["使用 Gist 值"]
+    G -->|"否"| C{"是 Canary Build?"}
+    C -->|"是"| R2["全部 true"]
+    C -->|"否"| R3["使用預設值, 全部 false"]
 
     style R1 fill:#d1fae5,stroke:#10b981
     style R2 fill:#dbeafe,stroke:#3b82f6
@@ -259,13 +259,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[發現線上問題] --> B{可用 Gist 關閉?}
-    B -->|是| C[修改 Gist JSON<br/>將問題 flag 設 false]
-    C --> D[使用者重整即恢復]
-    B -->|否| E[git revert HEAD]
-    E --> F[git push origin main]
-    F --> G[等待 GitHub Actions 重新部署]
-    G --> H[驗證金絲雀 → 驗證正式版]
+    A["發現線上問題"] --> B{"可用 Gist 關閉?"}
+    B -->|"是"| C["修改 Gist JSON, 將問題 flag 設 false"]
+    C --> D["使用者重整即恢復"]
+    B -->|"否"| E["git revert HEAD"]
+    E --> F["git push origin main"]
+    F --> G["等待 GitHub Actions 重新部署"]
+    G --> H["驗證金絲雀, 驗證正式版"]
 
     style C fill:#d1fae5,stroke:#10b981
     style D fill:#d1fae5,stroke:#10b981
