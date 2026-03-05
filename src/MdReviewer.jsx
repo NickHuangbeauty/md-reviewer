@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon } from 'lucide-react';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
+import { initEmbedApi } from './embedApi.js';
 
 
 /* ===== MD BLOCK SPLITTER ===== */
@@ -3137,9 +3138,43 @@ export default function MdReviewer() {
   // Feature Flags
   const flagDarkMode = useFeatureFlag('dark-mode');
   const flagDashboard = useFeatureFlag('dashboard');
+  const flagEmbedApi = useFeatureFlag('embed-api');
 
   // Fetch remote flags once on mount
   useEffect(() => { fetchRemoteFlags(); }, []);
+
+  // Embed API: postMessage listener for iframe integration
+  const filesRef = useRef(files);
+  useEffect(() => { filesRef.current = files; }, [files]);
+  useEffect(() => {
+    if (!flagEmbedApi) return;
+    if (window.parent === window) return; // standalone mode — do not activate
+    const cleanup = initEmbedApi({
+      instanceId: 'md-reviewer-' + Date.now(),
+      onSetFiles: (incomingFiles) => {
+        const uid = () => crypto.randomUUID?.() || ('f-' + Math.random().toString(36).slice(2, 10));
+        const imp = incomingFiles.map(f => ({
+          id: uid(),
+          name: f.name,
+          content: f.content,
+          originalContent: f.originalContent || f.content,
+          marks: [],
+          status: 'pending',
+          updatedAt: new Date().toISOString(),
+        }));
+        setFiles(imp);
+        setActiveId(imp[0]?.id || null);
+      },
+      onGetState: () => ({
+        files: filesRef.current.map(f => ({
+          name: f.name, content: f.content,
+          originalContent: f.originalContent,
+          status: f.status, marks: f.marks,
+        })),
+      }),
+    });
+    return cleanup;
+  }, [flagEmbedApi]);
 
   // When dark-mode flag is OFF, force light theme (prevent localStorage leak from canary)
   useEffect(() => {

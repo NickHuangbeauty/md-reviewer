@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embed API POC - Host Simulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 16px; background: #f0f2f5; color: #1a1a1a; }
+    h1 { font-size: 18px; margin-bottom: 12px; }
+    .status { font-size: 13px; padding: 6px 12px; border-radius: 6px; margin-bottom: 12px; }
+    .status.waiting { background: #fef3c7; color: #92400e; }
+    .status.connected { background: #d1fae5; color: #065f46; }
+    .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    label { font-size: 13px; font-weight: 500; }
+    input { padding: 5px 10px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 6px; width: 340px; }
+    button { padding: 6px 14px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    button:hover:not(:disabled) { background: #e5e7eb; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    button.green { background: #059669; color: #fff; border-color: #059669; }
+    button.green:hover:not(:disabled) { background: #047857; }
+    #log { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace;
+           font-size: 12px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 12px; line-height: 1.5; }
+    .log-send { color: #60a5fa; }
+    .log-recv { color: #34d399; }
+    .log-info { color: #a78bfa; }
+    .log-warn { color: #fbbf24; }
+    iframe { width: 100%; height: 600px; border: 2px solid #3b82f6; border-radius: 8px; background: #fff; }
+  </style>
+</head>
+<body>
+  <h1>Embed API POC - Host Simulator</h1>
+
+  <div id="statusBar" class="status waiting">Status: Waiting for iframe ready...</div>
+
+  <div class="controls">
+    <label>Target URL:</label>
+    <input id="targetUrl" value="http://localhost:5173/md-reviewer/" />
+    <button onclick="loadIframe()">Load iframe</button>
+  </div>
+
+  <div class="controls">
+    <button id="btnSetFiles" class="primary" onclick="sendSetFiles()" disabled>Send setFiles</button>
+    <button id="btnGetState" class="green" onclick="sendGetState()" disabled>Send getState</button>
+    <button onclick="clearLog()">Clear Log</button>
+  </div>
+
+  <div id="log"></div>
+
+  <iframe id="reviewer" src="about:blank" allow="clipboard-write"></iframe>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const iframe = document.getElementById('reviewer');
+    const statusBar = document.getElementById('statusBar');
+    const btnSetFiles = document.getElementById('btnSetFiles');
+    const btnGetState = document.getElementById('btnGetState');
+    let requestCounter = 0;
+    let isReady = false;
+
+    function log(type, data) {
+      const ts = new Date().toISOString().slice(11, 23);
+      const cls = type === 'send' ? 'log-send' : type === 'recv' ? 'log-recv' : type === 'warn' ? 'log-warn' : 'log-info';
+      const prefix = type === 'send' ? '>>> SEND' : type === 'recv' ? '<<< RECV' : type === 'warn' ? '!!! WARN' : '--- INFO';
+      const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = `[${ts}] ${prefix}: ${text}\n`;
+      logEl.appendChild(span);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearLog() { logEl.textContent = ''; }
+
+    function setReady(readyPayload) {
+      isReady = true;
+      btnSetFiles.disabled = false;
+      btnGetState.disabled = false;
+      statusBar.className = 'status connected';
+      statusBar.textContent = 'Status: Connected (protocol v' + (readyPayload?.protocolVersion || '?') + ', capabilities: ' + (readyPayload?.capabilities || []).join(', ') + ')';
+    }
+
+    function loadIframe() {
+      isReady = false;
+      btnSetFiles.disabled = true;
+      btnGetState.disabled = true;
+      statusBar.className = 'status waiting';
+      statusBar.textContent = 'Status: Loading iframe...';
+      const url = document.getElementById('targetUrl').value;
+      iframe.src = url;
+      log('info', 'Loading: ' + url);
+    }
+
+    // Listen for messages from the iframe
+    window.addEventListener('message', function(event) {
+      const msg = event.data;
+      if (!msg || msg.source !== 'md-reviewer') return;
+
+      log('recv', msg);
+
+      if (msg.type === 'ready') {
+        setReady(msg.payload);
+      }
+    });
+
+    function sendSetFiles() {
+      if (!isReady) { log('warn', 'iframe not ready yet'); return; }
+      const msg = {
+        source: 'streamlit-host',
+        type: 'setFiles',
+        requestId: 'req-' + (++requestCounter),
+        payload: {
+          mode: 'replace',
+          files: [
+            {
+              name: 'POC-test-1.md',
+              content: '# POC Test File 1\n\nThis is a test file sent via **postMessage**.\n\n## Section A\n\n| Column 1 | Column 2 | Column 3 |\n|----------|----------|----------|\n| Apple | Red | 3 |\n| Banana | Yellow | 5 |\n| Cherry | Dark Red | 12 |\n\n> This table was loaded from the Streamlit host.\n',
+              originalContent: '# POC Test File 1\n\nThis is a test file.\n\n## Section A\n\n| Column 1 | Column 2 |\n|----------|----------|\n| Apple | Red |\n| Banana | Yellow |\n',
+            },
+            {
+              name: 'POC-test-2.md',
+              content: '# POC Test File 2\n\nSecond file to verify batch loading.\n\n## Checklist\n\n- [x] iframe embedding works\n- [x] postMessage communication\n- [ ] Full v1 implementation\n- [ ] Streamlit integration\n\n```mermaid\nflowchart LR\n    A["Host"] -->|"postMessage"| B["MD Reviewer"]\n    B -->|"ack"| A\n```\n',
+            }
+          ],
+        },
+      };
+      log('send', msg);
+      iframe.contentWindow.postMessage(msg, '*');
+    }
+
+    function sendGetState() {
+      if (!isReady) { log('warn', 'iframe not ready yet'); return; }
+      const msg = {
+        source: 'streamlit-host',
+        type: 'getState',
+        requestId: 'req-' + (++requestCounter),
+        payload: {},
+      };
+      log('send', msg);
+      iframe.contentWindow.postMessage(msg, '*');
+    }
+
+    // Auto-load on page open
+    window.addEventListener('DOMContentLoaded', function() { loadIframe(); });
+  </script>
+</body>
+</html>

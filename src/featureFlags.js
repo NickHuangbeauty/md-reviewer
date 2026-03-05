@@ -18,6 +18,7 @@ const FLAG_DEFAULTS = {
   'dark-mode': false,        // 主題切換 (Sun/Moon 按鈕)
   'dashboard': false,        // 差異儀表板
   'diff-fold': false,        // 差異折疊（收合未變更行）
+  'embed-api': false,        // iframe postMessage 嵌入 API
 };
 
 // ===== Canary Detection (compile-time) =====
