@@ -231,6 +231,23 @@ function highlightCode(code, lang) {
   }).join('\n');
 }
 
+/** Scope CSS inside a <style> block to a container selector, preventing style leaks. */
+function _scopeStyleBlock(styleHtml, scopeSelector) {
+  const inner = styleHtml.replace(/<\/?style[^>]*>/gi, '');
+  const scoped = inner.replace(/([^{}@/][^{}]*?)\{/g, (match, selectors) => {
+    const trimmed = selectors.trim();
+    if (!trimmed || trimmed.startsWith('@') || trimmed.startsWith('from') || trimmed.startsWith('to') || /^\d+%/.test(trimmed)) return match;
+    const scopedSelectors = trimmed.split(',').map(s => {
+      const sel = s.trim();
+      if (sel === 'body' || sel === 'html') return scopeSelector;
+      if (sel.startsWith(scopeSelector)) return sel;
+      return `${scopeSelector} ${sel}`;
+    }).join(', ');
+    return `${scopedSelectors} {`;
+  });
+  return `<style>${scoped}</style>`;
+}
+
 function parseBlockToHtml(text) {
   if (!text) return '';
 
@@ -296,7 +313,7 @@ function parseBlockToHtml(text) {
   const bl = [];
   // Preserve HTML blocks: table (including nested/comments), div, pre, style
   h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
-  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
+  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { if (/^<style/i.test(m)) { m = _scopeStyleBlock(m, '.pv'); } bl.push(m); return `{{B${bl.length - 1}}}`; });
   h = h.replace(/((?:^\|.+\|$\n?)+)/gm, m => { const t = parseMarkdownTable(m); if (t) { bl.push(t); return `{{B${bl.length - 1}}}\n`; } return m; });
   h = h.replace(/^##### (.+)$/gm, '<h5>$1</h5>').replace(/^#### (.+)$/gm, '<h4>$1</h4>').replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
   h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -947,16 +964,16 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
     <div className="table-editor" ref={wrapRef}>
       {/* Column add buttons on top */}
       <div className="te-col-btns">
+        <button className="te-add-col" title="在最左邊插入欄"
+          onClick={() => addColLeft(0)}>+</button>
         {Array.from({ length: colCount }).map((_, ci) => (
           <div key={ci} className="te-col-btn-group">
-            <button className="te-add-col" title="在左邊插入欄"
-              onClick={() => addColLeft(ci)}>+</button>
             {colCount > 1 && <button className="te-del-col" title="刪除此欄"
               onClick={() => deleteCol(ci)}>×</button>}
+            <button className="te-add-col" title="在右邊插入欄"
+              onClick={() => addColRight(ci)}>+</button>
           </div>
         ))}
-        <button className="te-add-col te-add-col-last" title="在最右邊插入欄"
-          onClick={() => addColRight(colCount - 1)}>+</button>
       </div>
       <div className="te-scroll">
         <table>
@@ -1547,6 +1564,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   const hasMark = blockMarks.length > 0;
   const isHtmlTable = /<table/i.test(raw);
   const isMermaid = /^```mermaid\n/i.test(raw);
+  const isStyleBlock = /^<style[\s>]/i.test(raw.trim());
   const mdGrid = useMemo(() => !isHtmlTable ? parseMdTableToGrid(raw) : null, [raw, isHtmlTable]);
   const htmlGrid = useMemo(() => isHtmlTable ? parseHtmlTableToGrid(raw) : null, [raw, isHtmlTable]);
 
@@ -1727,6 +1745,11 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     e.stopPropagation(); e.preventDefault();
     setHandleMenu({ x: e.clientX - 10, y: e.clientY });
   };
+
+  // Style blocks are locked — not editable, hidden in preview
+  if (isStyleBlock) {
+    return null; // Hide style blocks from the editor view entirely
+  }
 
   if (isEditing) {
     // MD table → grid editor (output as MD)
@@ -3252,13 +3275,11 @@ export default function MdReviewer() {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates, updatedAt: new Date().toISOString() } : f));
   }, []);
 
-  // History Management
-  // History Management (DISABLED)
-  /*
+  // History Management (Undo/Redo)
   const pushHistory = useCallback((fileId, currentContent) => {
     setFiles(prev => prev.map(f => {
       if (f.id !== fileId) return f;
-      const newHistory = [...(f.history || []), currentContent].slice(-5); // Keep last 5 steps (User request: 5 times)
+      const newHistory = [...(f.history || []), currentContent].slice(-5);
       return { ...f, history: newHistory, future: [] };
     }));
   }, []);
@@ -3267,11 +3288,11 @@ export default function MdReviewer() {
     if (!activeFile || !activeFile.history || activeFile.history.length === 0) return;
     const previousContent = activeFile.history[activeFile.history.length - 1];
     const newHistory = activeFile.history.slice(0, -1);
-    setFiles(prev => prev.map(f => f.id === activeFile.id ? { 
-      ...f, 
-      content: previousContent, 
-      history: newHistory, 
-      future: [activeFile.content, ...(f.future || [])].slice(-5) 
+    setFiles(prev => prev.map(f => f.id === activeFile.id ? {
+      ...f,
+      content: previousContent,
+      history: newHistory,
+      future: [activeFile.content, ...(f.future || [])].slice(-5)
     } : f));
   }, [activeFile]);
 
@@ -3279,14 +3300,25 @@ export default function MdReviewer() {
     if (!activeFile || !activeFile.future || activeFile.future.length === 0) return;
     const nextContent = activeFile.future[0];
     const newFuture = activeFile.future.slice(1);
-    setFiles(prev => prev.map(f => f.id === activeFile.id ? { 
-      ...f, 
-      content: nextContent, 
-      history: [...(f.history || []), activeFile.content].slice(-5), 
-      future: newFuture 
+    setFiles(prev => prev.map(f => f.id === activeFile.id ? {
+      ...f,
+      content: nextContent,
+      history: [...(f.history || []), activeFile.content].slice(-5),
+      future: newFuture
     } : f));
   }, [activeFile]);
-  */
+
+  // Cmd+Z / Cmd+Shift+Z keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) { redo(); } else { undo(); }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
 
   const toggleDone = useCallback((id) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, status: f.status === 'done' ? 'pending' : 'done', updatedAt: new Date().toISOString() } : f));
@@ -3299,11 +3331,11 @@ export default function MdReviewer() {
     const idx = parseInt(blockId.replace('block-', ''));
     const cur = splitMdBlocks(activeFile.content);
     if (idx >= 0 && idx < cur.length && cur[idx] !== newText) {
-      // pushHistory(activeFile.id, activeFile.content); // UNDO DISABLED
+      pushHistory(activeFile.id, activeFile.content);
       cur[idx] = newText; updateFile(activeFile.id, { content: joinMdBlocks(cur) });
     }
     setEditingBlock(null);
-  }, [activeFile, updateFile]); // Removed pushHistory dependency
+  }, [activeFile, updateFile, pushHistory]);
 
   const onBlockMark = useCallback((blockId, e) => {
     if (!activeFile) return;
@@ -3320,9 +3352,9 @@ export default function MdReviewer() {
     const stripPrefix = (t) => t.replace(/^#{1,6}\s+/, '').replace(/^- /, '').replace(/^> /, '').replace(/^\*\*(.+)\*\*$/, '$1').trim();
 
     // Push history for all actions except copy
-    // if (action !== 'copy') {
-    //   pushHistory(activeFile.id, activeFile.content); // UNDO DISABLED
-    // }
+    if (action !== 'copy') {
+      pushHistory(activeFile.id, activeFile.content);
+    }
 
     switch (action) {
       case 'addAbove': {
