@@ -313,7 +313,7 @@ function parseBlockToHtml(text) {
   const bl = [];
   // Preserve HTML blocks: table (including nested/comments), div, pre, style
   h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
-  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { if (/^<style/i.test(m)) { m = _scopeStyleBlock(m, '.pv'); } bl.push(m); return `{{B${bl.length - 1}}}`; });
+  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { if (/^<style[\s>]/i.test(m)) { m = _scopeStyleBlock(m, '.pv'); } bl.push(m); return `{{B${bl.length - 1}}}`; });
   h = h.replace(/((?:^\|.+\|$\n?)+)/gm, m => { const t = parseMarkdownTable(m); if (t) { bl.push(t); return `{{B${bl.length - 1}}}\n`; } return m; });
   h = h.replace(/^##### (.+)$/gm, '<h5>$1</h5>').replace(/^#### (.+)$/gm, '<h4>$1</h4>').replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
   h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -3279,6 +3279,8 @@ export default function MdReviewer() {
   const pushHistory = useCallback((fileId, currentContent) => {
     setFiles(prev => prev.map(f => {
       if (f.id !== fileId) return f;
+      const lastHistory = f.history?.[f.history.length - 1];
+      if (lastHistory === currentContent) return f; // skip duplicate
       const newHistory = [...(f.history || []), currentContent].slice(-5);
       return { ...f, history: newHistory, future: [] };
     }));
@@ -3308,17 +3310,21 @@ export default function MdReviewer() {
     } : f));
   }, [activeFile]);
 
-  // Cmd+Z / Cmd+Shift+Z keyboard shortcuts for undo/redo
+  // Cmd+Z / Cmd+Shift+Z keyboard shortcuts for undo/redo (ref pattern: register once)
+  const undoRef = useRef(undo);
+  const redoRef = useRef(redo);
+  useEffect(() => { undoRef.current = undo; }, [undo]);
+  useEffect(() => { redoRef.current = redo; }, [redo]);
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
-        if (e.shiftKey) { redo(); } else { undo(); }
+        if (e.shiftKey) { redoRef.current(); } else { undoRef.current(); }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, []);
 
   const toggleDone = useCallback((id) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, status: f.status === 'done' ? 'pending' : 'done', updatedAt: new Date().toISOString() } : f));
@@ -3412,7 +3418,7 @@ export default function MdReviewer() {
       case 'toPlain': { cur[idx] = stripPrefix(cur[idx]); updateFile(activeFile.id, { content: joinMdBlocks(cur) }); break; }
       default: break;
     }
-  }, [activeFile, updateFile]); // Removed pushHistory dependency
+  }, [activeFile, updateFile, pushHistory]);
 
   const saveMark = useCallback((issue) => {
     if (!popup || !activeFile) return;
