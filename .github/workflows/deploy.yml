@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'canary']
   workflow_dispatch:
 
 permissions:
@@ -18,6 +18,81 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # --- Checkout pushed branch ---
+      - name: Checkout pushed branch
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      # --- For canary branch: also checkout main for production build ---
+      - name: Checkout main branch (for production)
+        if: github.ref == 'refs/heads/canary'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-source
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # ========== MAIN BRANCH: build both from main ==========
+      - name: Install dependencies (main)
+        if: github.ref == 'refs/heads/main'
+        run: cd source && npm ci
+
+      - name: Build production (main)
+        if: github.ref == 'refs/heads/main'
+        run: cd source && npm run build
+
+      - name: Build canary (main)
+        if: github.ref == 'refs/heads/main'
+        run: cd source && npm run build:canary
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      # ========== CANARY BRANCH: canary from canary, production from main ==========
+      - name: Install & build canary (from canary branch)
+        if: github.ref == 'refs/heads/canary'
+        run: cd source && npm ci && npm run build:canary
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Install & build production (from main branch)
+        if: github.ref == 'refs/heads/canary'
+        run: |
+          cd main-source && npm ci && npm run build
+          # Merge: copy production files into source/dist (canary already there)
+          cp -r dist/* ../source/dist/
+
+      # ========== Deploy ==========
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'source/dist'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # --- Smoke test canary after deployment (canary branch only) ---
+  smoke-test-canary:
+    if: github.ref == 'refs/heads/canary'
+    runs-on: ubuntu-latest
+    needs: deploy
+    timeout-minutes: 10
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -30,29 +105,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build production
-        run: npm run build
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
 
-      - name: Build canary
-        run: npm run build:canary
+      - name: Wait for Pages deployment to propagate
+        run: sleep 30
+
+      - name: Run canary smoke tests
+        run: node tests/smoke.mjs
         env:
-          GITHUB_SHA: ${{ github.sha }}
+          TARGET_URL: 'https://NickHuangbeauty.github.io/md-reviewer/canary/'
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          path: './dist'
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          name: canary-smoke-screenshots
+          path: tests/screenshots/
+          retention-days: 7
