@@ -4123,8 +4123,8 @@ export default function MdReviewer() {
       <input ref={importRef} type="file" accept=".json" onChange={doImport} className="hidden" />
 
       <div style={{flex:'1 1 0%',display:'flex',overflow:'hidden',minHeight:0}}>
-        {/* Sidebar — hidden in embed mode */}
-        <div className="bg-white border-r flex flex-col" style={{width:'clamp(180px, 20%, 240px)',minWidth:180,maxWidth:240,flexShrink:0, display: embedMode ? 'none' : undefined}}>
+        {/* Sidebar — always visible (even in embed mode, for file switching) */}
+        <div className="bg-white border-r flex flex-col" style={{width:'clamp(180px, 20%, 240px)',minWidth:180,maxWidth:240,flexShrink:0}}>
           <div className="px-3 py-2.5 border-b flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">檔案清單</span>
             <button onClick={() => setShowAdd(true)} className="w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"><Plus className="w-3.5 h-3.5" /></button>
