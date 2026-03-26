@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon } from 'lucide-react';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
+import renderMathInElement from 'katex/contrib/auto-render';
 
 
 /* ===== MD BLOCK SPLITTER ===== */
@@ -1538,6 +1539,7 @@ async function _drainMmQueue() {
       try {
         await new Promise(r => requestAnimationFrame(r));
         const result = await window.mermaid.render(entry.id, entry.code);
+        cleanupMermaidDom(entry.id);
         entry.resolve(result);
       } catch (err) {
         cleanupMermaidDom(entry.id);
@@ -1547,6 +1549,42 @@ async function _drainMmQueue() {
   } finally {
     _mmRunning = false;
   }
+}
+
+/* ===== HTML CONTENT EDITABLE ===== */
+function HtmlContentEditable({ html, onSave, onCancel }) {
+  const ref = useRef(null);
+  const cancelRequestedRef = useRef(false);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.innerHTML = html;
+      ref.current.focus();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleBlur = (e) => {
+    if (cancelRequestedRef.current) {
+      cancelRequestedRef.current = false;
+      return;
+    }
+    onSave(e.currentTarget.innerHTML);
+  };
+  return (
+    <div>
+      <div style={{fontSize:'11px',color:'#999',marginBottom:'6px'}}>
+        點擊文字直接編輯 · 按外面儲存
+      </div>
+      <div ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        className="pv"
+        onBlur={handleBlur}
+        style={{ border: '2px solid #4a90a4', borderRadius: '4px', padding: '12px', minHeight: '40px', outline: 'none' }}
+      />
+      <button className="te-btn te-cancel" style={{marginTop:'6px',fontSize:'11px'}}
+        onMouseDown={() => { cancelRequestedRef.current = true; }}
+        onClick={onCancel}>取消</button>
+    </div>
+  );
 }
 
 /* ===== INLINE BLOCK ===== */
@@ -1581,7 +1619,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   // Mermaid rendering — save SVG to state so re-renders don't lose it
   useEffect(() => { if (isMermaid) { setMermaidSvg(null); setMermaidErr(null); } }, [raw]);
   useEffect(() => {
-    if (!isEditing && isMermaid && !mermaidSvg && !mermaidErr && window.mermaid) {
+    if (!isEditing && isMermaid && !mermaidSvg && !mermaidErr && mermaidReady && window.mermaid) {
       const code = extractMermaidCode(raw);
       if (!code) return;
       const id = 'mm-' + blockId.replace(/[^a-zA-Z0-9]/g, '') + '-' + Date.now();
@@ -1598,11 +1636,20 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     }
   }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId, mermaidReady]);
 
-  // Mermaid SVG as data URL — avoids both HTML parser foreignObject issue and DOM injection race conditions.
-  const mermaidDataUrl = useMemo(() => {
-    if (!mermaidSvg) return null;
-    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(mermaidSvg);
-  }, [mermaidSvg]);
+  // KaTeX math rendering — render $$...$$ and $...$ after DOM update
+  useEffect(() => {
+    if (isEditing || !previewRef.current) return;
+    const pvEls = previewRef.current.querySelectorAll('.pv');
+    pvEls.forEach(el => {
+      renderMathInElement(el, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+        ],
+        throwOnError: false,
+      });
+    });
+  }, [isEditing, html]);
 
   // Table scroll: measure container, set explicit width, sync custom scrollbar
   useEffect(() => {
@@ -1783,6 +1830,23 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
         </div>
       );
     }
+    // HTML blocks: show rendered preview with contentEditable for text-only editing
+    // Note: contentEditable is used on user-authored content within this review tool
+    const isHtmlBlock = /^<(?:div|p|h[1-6]|section|article|header|footer|nav|ul|ol|dl|blockquote|figure|details)/i.test(raw.trim());
+    if (isHtmlBlock && !isStyleBlock) {
+      return (
+        <div className="block-wrapper">
+          <div className="edit-block html-visual-edit">
+            <div style={{fontSize:'11px',color:'#999',marginBottom:'6px'}}>點擊文字直接編輯 · 按外面儲存 · 按「原始碼」看 HTML</div>
+            <HtmlContentEditable
+              html={html}
+              onSave={(editedHtml) => onFinishEdit(blockId, editedHtml)}
+              onCancel={() => onFinishEdit(blockId, raw)}
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="block-wrapper">
         <div className="edit-block">
@@ -1835,7 +1899,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
             <div dangerouslySetInnerHTML={{ __html: html }} />
             {mermaidSvg ? (
               <div className="mermaid-body mermaid-rendered">
-                <img src={mermaidDataUrl} style={{ width: '100%', display: 'block' }} alt="" />
+                <div className="mermaid-svg-wrap" dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
               </div>
             ) : mermaidErr ? (
               <div className="mermaid-body mermaid-error">
@@ -1845,8 +1909,11 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
                 <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
               </div>
             ) : (
-              <div className="mermaid-body">
-                <pre className="mermaid-src">{extractMermaidCode(raw)}</pre>
+              <div className="mermaid-body mermaid-loading">
+                <div style={{textAlign:'center',padding:'20px',color:'#999'}}>
+                  <div style={{fontSize:'24px',marginBottom:'8px'}}>⏳</div>
+                  <div>Mermaid 渲染中...</div>
+                </div>
               </div>
             )}
           </div>
@@ -1885,49 +1952,145 @@ function AddFileModal({ onAdd, onBatchAdd, onClose }) {
     return parts;
   };
   const batchFiles = mode === 'batch' ? parseBatch() : [];
+  const singleReady = !!(name.trim() && content.trim());
+  const batchReady = batchFiles.length > 0;
+  const submitSingle = () => { if (singleReady) onAdd(name.trim(), content.trim()); };
+  const submitBatch = () => { if (batchReady) { onBatchAdd(batchFiles); onClose(); } };
+  const handleShortcut = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (mode === 'single') submitSingle();
+      else submitBatch();
+    }
+  };
+  const panelStyle = {
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-xl)'
+  };
+  const subtleStyle = { color: 'var(--text2)' };
+  const helperStyle = {
+    background: 'var(--surface2)',
+    border: '1px solid var(--border)',
+    color: 'var(--text2)'
+  };
+  const inputStyle = {
+    width: '100%',
+    border: '1px solid var(--border)',
+    borderRadius: '10px',
+    padding: '10px 12px',
+    fontSize: '13px',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    outline: 'none'
+  };
+  const textAreaStyle = {
+    width: '100%',
+    height: '16rem',
+    border: '1px solid var(--border)',
+    borderRadius: '12px',
+    padding: '12px 14px',
+    fontSize: '12px',
+    fontFamily: 'var(--mono)',
+    resize: 'none',
+    lineHeight: 1.7,
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    outline: 'none'
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
-          <h2 className="text-base font-semibold text-gray-800">新增檔案</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+      <div className="rounded-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col overflow-hidden" style={panelStyle} onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h2 className="text-base font-semibold">新增檔案</h2>
+            <p className="text-xs mt-1" style={subtleStyle}>支援單檔貼上或批次匯入，按 Cmd/Ctrl + Enter 可直接送出。</p>
+          </div>
+          <button onClick={onClose} className="transition-colors" style={subtleStyle}><X className="w-5 h-5" /></button>
         </div>
         <div className="px-5 pt-4 shrink-0">
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setMode('single')} className={`flex-1 py-1.5 text-sm rounded-md font-medium ${mode === 'single' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>單檔新增</button>
-            <button onClick={() => setMode('batch')} className={`flex-1 py-1.5 text-sm rounded-md font-medium ${mode === 'batch' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>批次新增</button>
+          <div className="flex gap-1 p-1 rounded-xl" style={helperStyle}>
+            <button onClick={() => setMode('single')} className="flex-1 py-2 text-sm rounded-lg font-medium transition-all"
+              style={mode === 'single' ? { background: 'var(--surface)', color: 'var(--text)', boxShadow: 'var(--shadow)' } : subtleStyle}>
+              單檔新增
+            </button>
+            <button onClick={() => setMode('batch')} className="flex-1 py-2 text-sm rounded-lg font-medium transition-all"
+              style={mode === 'batch' ? { background: 'var(--surface)', color: 'var(--text)', boxShadow: 'var(--shadow)' } : subtleStyle}>
+              批次新增
+            </button>
           </div>
         </div>
         <div className="p-5 flex-1 overflow-y-auto">
           {mode === 'single' ? (
             <div className="space-y-3">
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">檔案名稱</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="例如:文件1.md" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" /></div>
-              <div><div className="flex items-center justify-between mb-1"><label className="text-sm font-medium text-gray-700">Markdown 內容</label>
-                <button onClick={handlePaste} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"><Clipboard className="w-3 h-3" />從剪貼簿貼上</button></div>
-                <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="貼上 Markdown 內容..." className="w-full h-64 border rounded-lg p-3 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 leading-relaxed" /></div>
+              <div className="rounded-xl p-3.5" style={helperStyle}>
+                <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text)' }}>單檔模式</div>
+                <div className="text-xs" style={subtleStyle}>適合直接貼入單一 Markdown 文件，檔名可先填好再貼內容。</div>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block" style={{ color: 'var(--text)' }}>檔案名稱</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={handleShortcut}
+                  autoFocus
+                  placeholder="例如: 理賠文件.md"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-medium" style={{ color: 'var(--text)' }}>Markdown 內容</label>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px]" style={subtleStyle}>{content.length} 字元</span>
+                    <button onClick={handlePaste} className="text-xs flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+                      <Clipboard className="w-3 h-3" />從剪貼簿貼上
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  onKeyDown={handleShortcut}
+                  placeholder="貼上 Markdown 內容，或直接在這裡輸入..."
+                  style={textAreaStyle}
+                />
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                <p className="font-semibold mb-1">批次貼上格式</p><p className="mb-2">用分隔線區分每個檔案:</p>
-                <pre className="bg-white border rounded p-2 text-xs font-mono whitespace-pre-wrap leading-relaxed">{`=== FILE: 文件1.md ===\n(第一個檔案的內容)\n\n=== FILE: 文件2.md ===\n(第二個檔案的內容)`}</pre>
+              <div className="rounded-xl p-3.5 text-xs" style={{ ...helperStyle, background: 'rgba(245, 158, 11, 0.09)' }}>
+                <p className="font-semibold mb-1" style={{ color: 'var(--text)' }}>批次貼上格式</p>
+                <p className="mb-2" style={subtleStyle}>用分隔線區分每個檔案，系統會自動拆分並檢查內容。</p>
+                <pre className="border rounded-lg p-2.5 text-xs font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto"
+                  style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text2)' }}>{`=== FILE: 文件1.md ===\n(第一個檔案的內容)\n\n=== FILE: 文件2.md ===\n(第二個檔案的內容)`}</pre>
               </div>
-              <textarea value={batchText} onChange={e => setBatchText(e.target.value)} placeholder={"=== FILE: 文件1.md ===\n..."} className="w-full h-64 border rounded-lg p-3 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 leading-relaxed" />
-              {batchFiles.length > 0 && (<div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-xs font-semibold text-green-700 mb-1">偵測到 {batchFiles.length} 個檔案:</p>
-                {batchFiles.map((f, i) => (<div key={i} className="text-xs text-green-600 flex items-center gap-1.5 py-0.5"><FileText className="w-3 h-3" />{f.name} ({f.content.length} å­—)</div>))}
+              <textarea
+                value={batchText}
+                onChange={e => setBatchText(e.target.value)}
+                onKeyDown={handleShortcut}
+                placeholder={"=== FILE: 文件1.md ===\n...\n\n=== FILE: 文件2.md ===\n..."}
+                style={textAreaStyle}
+              />
+              {batchFiles.length > 0 && (<div className="rounded-xl p-3" style={{ background: 'var(--success-bg)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--success)' }}>偵測到 {batchFiles.length} 個檔案</p>
+                {batchFiles.map((f, i) => (
+                  <div key={i} className="text-xs flex items-center gap-1.5 py-0.5" style={{ color: 'var(--text2)' }}>
+                    <FileText className="w-3 h-3" />{f.name} ({f.content.length} 字)
+                  </div>
+                ))}
               </div>)}
             </div>
           )}
         </div>
-        <div className="px-5 py-3 bg-gray-50 border-t flex justify-end gap-2 shrink-0">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">取消</button>
+        <div className="px-5 py-3 border-t flex justify-end gap-2 shrink-0" style={{ background: 'var(--surface2)', borderColor: 'var(--border)' }}>
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg transition-colors" style={subtleStyle}>取消</button>
           {mode === 'single' ? (
-            <button onClick={() => { if (name.trim() && content.trim()) onAdd(name.trim(), content.trim()); }} disabled={!name.trim() || !content.trim()} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">新增</button>
+            <button onClick={submitSingle} disabled={!singleReady} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">新增</button>
           ) : (
-            <button onClick={() => { if (batchFiles.length) { batchFiles.forEach(f => onBatchAdd(f.name, f.content)); onClose(); } }} disabled={!batchFiles.length} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">新增 {batchFiles.length} 個檔案</button>
+            <button onClick={submitBatch} disabled={!batchReady} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">新增 {batchFiles.length} 個檔案</button>
           )}
         </div>
       </div>
@@ -3166,29 +3329,57 @@ export default function MdReviewer() {
   // Fetch remote flags once on mount
   useEffect(() => { fetchRemoteFlags(); }, []);
 
-  // Embed API: postMessage listener for iframe integration
+  // === Shared file import helper ===
+  const importFiles = useCallback((incomingFiles) => {
+    const uid = () => crypto.randomUUID?.() || ('f-' + Math.random().toString(36).slice(2, 10));
+    const now = new Date().toISOString();
+    const imp = incomingFiles.map(f => ({
+      id: uid(),
+      name: f.name,
+      content: f.content,
+      originalContent: f.originalContent || f.content,
+      marks: [],
+      status: 'pending',
+      updatedAt: now,
+    }));
+    setFiles(imp);
+    setActiveId(imp[0]?.id || null);
+  }, []);
+
+  // === P0: window.mdReviewer global API (works for same-origin iframe, no flag needed) ===
   const filesRef = useRef(files);
   useEffect(() => { filesRef.current = files; }, [files]);
   useEffect(() => {
+    window.mdReviewer = {
+      loadFiles: (files) => importFiles(files),
+      getState: () => ({
+        files: filesRef.current.map(f => ({
+          name: f.name, content: f.content,
+          originalContent: f.originalContent,
+          status: f.status, marks: f.marks,
+        })),
+      }),
+      setTheme: (t) => { if (t === 'dark' || t === 'light') setTheme(t); },
+      version: '1.1.0',
+    };
+    return () => { delete window.mdReviewer; };
+  }, [importFiles]);
+
+  // === P1: URL param support (?theme=dark&mode=embed) ===
+  const [embedMode, setEmbedMode] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('theme') === 'dark') setTheme('dark');
+    if (params.get('mode') === 'embed' || params.get('mode') === 'readonly') setEmbedMode(true);
+  }, []);
+
+  // === Embed API: postMessage listener for cross-origin iframe ===
+  useEffect(() => {
     if (!flagEmbedApi) return;
-    if (window.parent === window) return; // standalone mode — do not activate
+    if (window.parent === window) return; // standalone mode
     const cleanup = initEmbedApi({
       instanceId: 'md-reviewer-' + Date.now(),
-      onSetFiles: (incomingFiles) => {
-        const uid = () => crypto.randomUUID?.() || ('f-' + Math.random().toString(36).slice(2, 10));
-        const now = new Date().toISOString();
-        const imp = incomingFiles.map(f => ({
-          id: uid(),
-          name: f.name,
-          content: f.content,
-          originalContent: f.originalContent || f.content,
-          marks: [],
-          status: 'pending',
-          updatedAt: now,
-        }));
-        setFiles(imp);
-        setActiveId(imp[0]?.id || null);
-      },
+      onSetFiles: importFiles,
       onGetState: () => ({
         files: filesRef.current.map(f => ({
           name: f.name, content: f.content,
@@ -3198,7 +3389,7 @@ export default function MdReviewer() {
       }),
     });
     return cleanup;
-  }, [flagEmbedApi]);
+  }, [flagEmbedApi, importFiles]);
 
   // When dark-mode flag is OFF, force light theme (prevent localStorage leak from canary)
   useEffect(() => {
@@ -3576,14 +3767,15 @@ export default function MdReviewer() {
     .code-body{padding:14px 18px;margin:0;font-size:12.5px;line-height:1.75;color:#e6edf3;font-family:var(--mono);overflow-x:auto;white-space:pre;flex:1}
     .hl-kw{color:#ff7b72;font-weight:500} .hl-str{color:#a5d6ff} .hl-cmt{color:#8b949e;font-style:italic} .hl-num{color:#79c0ff} .hl-fn{color:#d2a8ff} .hl-bi{color:#ffa657} .hl-cls{color:#7ee787} .hl-deco{color:#ffa657;font-style:italic} .hl-op{color:#ff7b72}
 
-    .mermaid-block{border-radius:var(--radius);overflow:hidden;margin:8px 0;border:1.5px solid #c4b5fd;background:linear-gradient(135deg,#faf5ff 0%,#ede9fe 100%);box-shadow:0 4px 16px rgba(124,58,237,.08)}
-    .mermaid-header{padding:8px 14px;background:linear-gradient(90deg,#7c3aed10,#7c3aed08);border-bottom:1px solid #ddd6fe;display:flex;align-items:center;justify-content:space-between}
-    .mermaid-badge{font-size:11px;font-weight:700;color:#7c3aed;letter-spacing:.02em;font-family:var(--font)}
-    .mermaid-hint{font-size:10px;color:#a78bfa;font-family:var(--font)}
-    .mermaid-body{padding:20px;min-height:60px;display:flex;align-items:center;justify-content:center;background:white;margin:8px;border-radius:8px;border:1px solid #ede9fe}
-    .mermaid-body pre.mermaid-src{font-size:12px;color:#6b7280;font-family:var(--mono);white-space:pre-wrap;text-align:center}
+    .mermaid-block{border-radius:var(--radius);overflow:hidden;margin:8px 0;border:1px solid color-mix(in srgb, var(--violet) 28%, transparent);background:linear-gradient(135deg,color-mix(in srgb, var(--violet) 10%, var(--surface)) 0%,var(--surface) 100%);box-shadow:0 4px 16px rgba(124,58,237,.08)}
+    .mermaid-header{padding:8px 14px;background:linear-gradient(90deg,color-mix(in srgb, var(--violet) 10%, transparent),transparent);border-bottom:1px solid color-mix(in srgb, var(--violet) 18%, var(--border));display:flex;align-items:center;justify-content:space-between}
+    .mermaid-badge{font-size:11px;font-weight:700;color:var(--violet);letter-spacing:.02em;font-family:var(--font)}
+    .mermaid-hint{font-size:10px;color:var(--text3);font-family:var(--font)}
+    .mermaid-body{padding:20px;min-height:60px;display:flex;align-items:center;justify-content:center;background:var(--surface);margin:8px;border-radius:8px;border:1px solid var(--border);overflow:auto}
+    .mermaid-body pre.mermaid-src{font-size:12px;color:var(--text2);font-family:var(--mono);white-space:pre-wrap;text-align:center}
     .mermaid-body.mermaid-rendered{padding:16px}
-    .mermaid-body.mermaid-rendered svg{max-width:100%;height:auto}
+    .mermaid-svg-wrap{width:100%;display:flex;align-items:center;justify-content:center}
+    .mermaid-svg-wrap svg{max-width:100%;height:auto;display:block}
     .mermaid-body.mermaid-error{flex-direction:column;gap:6px;padding:20px;background:#fef7f7;border-color:#fecaca}
     .mm-err-icon{font-size:28px;line-height:1;opacity:.7}
     .mm-err-title{font-size:13px;font-weight:700;color:#b91c1c;font-family:var(--font)}
@@ -3903,8 +4095,8 @@ export default function MdReviewer() {
         </div>
       </div>
       
-      {/* Header */}
-      <div style={{background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'8px clamp(10px,2%,16px)',boxShadow:'var(--shadow)',flexShrink:0}}>
+      {/* Header — hidden in embed mode */}
+      <div style={{background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'8px clamp(10px,2%,16px)',boxShadow:'var(--shadow)',flexShrink:0, display: embedMode ? 'none' : undefined}}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div style={{width:36,height:36,background:'linear-gradient(135deg,#2563eb,#7c3aed)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center'}}><FileText className="w-4.5 h-4.5 text-white" /></div>
@@ -3931,8 +4123,8 @@ export default function MdReviewer() {
       <input ref={importRef} type="file" accept=".json" onChange={doImport} className="hidden" />
 
       <div style={{flex:'1 1 0%',display:'flex',overflow:'hidden',minHeight:0}}>
-        {/* Sidebar */}
-        <div className="bg-white border-r flex flex-col" style={{width:'clamp(180px, 20%, 240px)',minWidth:180,maxWidth:240,flexShrink:0}}>
+        {/* Sidebar — hidden in embed mode */}
+        <div className="bg-white border-r flex flex-col" style={{width:'clamp(180px, 20%, 240px)',minWidth:180,maxWidth:240,flexShrink:0, display: embedMode ? 'none' : undefined}}>
           <div className="px-3 py-2.5 border-b flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">檔案清單</span>
             <button onClick={() => setShowAdd(true)} className="w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"><Plus className="w-3.5 h-3.5" /></button>
