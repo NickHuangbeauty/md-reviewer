@@ -1372,7 +1372,7 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
       const entry = enqueueMermaidRender(id, src.trim());
       activeEntry.current = entry;
       entry.promise.then(({ svg: s }) => {
-        if (!entry.cancelled) { setSvg(s); setError(''); }
+        if (!entry.cancelled) { setSvg(s.replace(/ id="[^"]*"/, '')); setError(''); }
       }).catch((err) => {
         if (!entry.cancelled) setError(String(err?.message || err).slice(0, MM_ERR_MAX));
       });
@@ -1625,7 +1625,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
       const id = 'mm-' + blockId.replace(/[^a-zA-Z0-9]/g, '') + '-' + Date.now();
       const entry = enqueueMermaidRender(id, code);
       entry.promise.then(({ svg }) => {
-        if (!entry.cancelled) setMermaidSvg(svg);
+        if (!entry.cancelled) setMermaidSvg(svg.replace(/ id="[^"]*"/, ''));
       }).catch((err) => {
         if (!entry.cancelled) {
           setMermaidErr(String(err?.message || err).slice(0, MM_ERR_MAX));
