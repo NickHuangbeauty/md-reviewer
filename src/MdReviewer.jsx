@@ -1371,8 +1371,9 @@ function MermaidEditor({ initialCode, onSave, onCancel }) {
       const id = 'mme-' + Date.now();
       const entry = enqueueMermaidRender(id, src.trim());
       activeEntry.current = entry;
+      const safeId = 'mme-safe-' + Date.now();
       entry.promise.then(({ svg: s }) => {
-        if (!entry.cancelled) { setSvg(s.replace(/ id="[^"]*"/, '')); setError(''); }
+        if (!entry.cancelled) { setSvg(s.replaceAll(id, safeId)); setError(''); }
       }).catch((err) => {
         if (!entry.cancelled) setError(String(err?.message || err).slice(0, MM_ERR_MAX));
       });
@@ -1588,7 +1589,7 @@ function HtmlContentEditable({ html, onSave, onCancel }) {
 }
 
 /* ===== INLINE BLOCK ===== */
-function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction, mermaidReady }) {
+function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction, mermaidReady, mermaidThemeVer }) {
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const mouseDownRef = useRef(null);
@@ -1617,15 +1618,16 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   }, [isEditing]);
 
   // Mermaid rendering — save SVG to state so re-renders don't lose it
-  useEffect(() => { if (isMermaid) { setMermaidSvg(null); setMermaidErr(null); } }, [raw]);
+  useEffect(() => { if (isMermaid) { setMermaidSvg(null); setMermaidErr(null); } }, [raw, mermaidThemeVer]);
   useEffect(() => {
     if (!isEditing && isMermaid && !mermaidSvg && !mermaidErr && mermaidReady && window.mermaid) {
       const code = extractMermaidCode(raw);
       if (!code) return;
       const id = 'mm-' + blockId.replace(/[^a-zA-Z0-9]/g, '') + '-' + Date.now();
       const entry = enqueueMermaidRender(id, code);
+      const safeId = 'mmv-' + blockId.replace(/[^a-zA-Z0-9]/g, '');
       entry.promise.then(({ svg }) => {
-        if (!entry.cancelled) setMermaidSvg(svg.replace(/ id="[^"]*"/, ''));
+        if (!entry.cancelled) setMermaidSvg(svg.replaceAll(id, safeId));
       }).catch((err) => {
         if (!entry.cancelled) {
           setMermaidErr(String(err?.message || err).slice(0, MM_ERR_MAX));
@@ -1634,7 +1636,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
       });
       return () => { entry.cancelled = true; cleanupMermaidDom(id); };
     }
-  }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId, mermaidReady]);
+  }, [isEditing, isMermaid, mermaidSvg, mermaidErr, raw, blockId, mermaidReady, mermaidThemeVer]);
 
   // KaTeX math rendering — render $$...$$ and $...$ after DOM update
   useEffect(() => {
@@ -3316,6 +3318,7 @@ export default function MdReviewer() {
   const [viewMode, setViewMode] = useState('preview');
   const [showDashboard, setShowDashboard] = useState(false);
   const [mermaidReady, setMermaidReady] = useState(false);
+  const [mermaidThemeVer, setMermaidThemeVer] = useState(0);
   const [showToc, setShowToc] = useState(false);
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
@@ -3408,33 +3411,30 @@ export default function MdReviewer() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   }, []);
 
+  // Mermaid config — adapt theme to app theme
+  const mmConfig = useMemo(() => {
+    const shared = { startOnLoad: false, suppressErrorRendering: true, flowchart: { curve: 'basis', padding: 12 }, sequence: { actorMargin: 30, mirrorActors: false } };
+    const font = { fontFamily: '"Noto Sans TC", system-ui, sans-serif', fontSize: '13px' };
+    if (theme === 'dark') return { ...shared, theme: 'dark', themeVariables: { ...font, primaryColor: '#374151', primaryTextColor: '#e5e7eb', primaryBorderColor: '#60a5fa', lineColor: '#9ca3af', secondaryColor: '#1f2937', tertiaryColor: '#4b5563' } };
+    return { ...shared, theme: 'neutral', themeVariables: { ...font, primaryColor: '#dbeafe', primaryTextColor: '#1e3a5f', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f0fdf4', tertiaryColor: '#fef3c7' } };
+  }, [theme]);
+
   // Load Mermaid.js from CDN
   useEffect(() => {
-    if (window.mermaid) { setMermaidReady(true); return; }
+    if (window.mermaid) {
+      window.mermaid.initialize(mmConfig);
+      setMermaidReady(true);
+      setMermaidThemeVer(v => v + 1);
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js';
     script.onload = () => {
-      window.mermaid.initialize({
-        startOnLoad: false,
-        suppressErrorRendering: true,
-        theme: 'neutral',
-        themeVariables: {
-          primaryColor: '#dbeafe',
-          primaryTextColor: '#1e3a5f',
-          primaryBorderColor: '#3b82f6',
-          lineColor: '#64748b',
-          secondaryColor: '#f0fdf4',
-          tertiaryColor: '#fef3c7',
-          fontFamily: '"Noto Sans TC", system-ui, sans-serif',
-          fontSize: '13px'
-        },
-        flowchart: { curve: 'basis', padding: 12 },
-        sequence: { actorMargin: 30, mirrorActors: false },
-      });
+      window.mermaid.initialize(mmConfig);
       setMermaidReady(true);
     };
     document.head.appendChild(script);
-  }, []);
+  }, [mmConfig]);
 
   const activeFile = files.find(f => f.id === activeId);
   const { allStats: dashStats, computing: dashComputing } = useDashboardStats(files, flagDashboard && showDashboard);
@@ -3776,10 +3776,10 @@ export default function MdReviewer() {
     .mermaid-body.mermaid-rendered{padding:16px}
     .mermaid-svg-wrap{width:100%;display:flex;align-items:center;justify-content:center}
     .mermaid-svg-wrap svg{max-width:100%;height:auto;display:block}
-    .mermaid-body.mermaid-error{flex-direction:column;gap:6px;padding:20px;background:#fef7f7;border-color:#fecaca}
+    .mermaid-body.mermaid-error{flex-direction:column;gap:6px;padding:20px;background:var(--danger-bg);border-color:var(--danger)}
     .mm-err-icon{font-size:28px;line-height:1;opacity:.7}
-    .mm-err-title{font-size:13px;font-weight:700;color:#b91c1c;font-family:var(--font)}
-    .mm-err-msg{font-size:11px;color:#7f1d1d;font-family:var(--mono);background:#fee2e2;padding:6px 10px;border-radius:6px;max-width:100%;overflow-x:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #fecaca;line-height:1.5}
+    .mm-err-title{font-size:13px;font-weight:700;color:var(--danger);font-family:var(--font)}
+    .mm-err-msg{font-size:11px;color:var(--danger);font-family:var(--mono);background:var(--danger-bg);padding:6px 10px;border-radius:6px;max-width:100%;overflow-x:auto;white-space:pre-wrap;word-break:break-all;border:1px solid var(--danger);line-height:1.5}
     .mm-err-hint{font-size:10.5px;color:#9ca3af;font-family:var(--font);font-style:italic}
 
     .preview-block{position:relative;padding:8px 12px;margin:2px 0;border-radius:var(--radius-sm);border:1.5px solid transparent;cursor:text;transition:all .15s ease;min-width:0;overflow:hidden;word-break:break-word}
@@ -3926,17 +3926,17 @@ export default function MdReviewer() {
     .handle-item{width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;background:none;cursor:pointer;border-radius:var(--radius-sm);font-size:12.5px;font-family:var(--font);transition:background .1s}
     .handle-item:hover{background:var(--surface2)}
 
-    .mm-editor{border:2px solid #c4b5fd;border-radius:var(--radius);overflow:hidden;background:#faf5ff;box-shadow:0 0 0 4px rgba(124,58,237,.08)}
-    .mm-editor-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:linear-gradient(90deg,#7c3aed10,#7c3aed08);border-bottom:1px solid #ddd6fe}
-    .mm-editor-badge{font-size:12px;font-weight:700;color:#7c3aed;letter-spacing:.01em;font-family:var(--font)}
+    .mm-editor{border:2px solid color-mix(in srgb, var(--violet) 50%, var(--border));border-radius:var(--radius);overflow:hidden;background:color-mix(in srgb, var(--violet) 6%, var(--surface));box-shadow:0 0 0 4px rgba(124,58,237,.08)}
+    .mm-editor-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:linear-gradient(90deg,color-mix(in srgb, var(--violet) 10%, transparent),transparent);border-bottom:1px solid color-mix(in srgb, var(--violet) 20%, var(--border))}
+    .mm-editor-badge{font-size:12px;font-weight:700;color:var(--violet);letter-spacing:.01em;font-family:var(--font)}
     .mm-editor-header-right{display:flex;align-items:center;gap:10px}
-    .mm-hl-indicator{font-size:10.5px;color:#7c3aed;font-family:var(--font);display:flex;align-items:center;gap:5px;padding:3px 12px;background:#ede9fe;border-radius:20px;font-weight:700;animation:mmHlIn .25s ease;border:1px solid #c4b5fd}
+    .mm-hl-indicator{font-size:10.5px;color:var(--violet);font-family:var(--font);display:flex;align-items:center;gap:5px;padding:3px 12px;background:color-mix(in srgb, var(--violet) 15%, var(--surface));border-radius:20px;font-weight:700;animation:mmHlIn .25s ease;border:1px solid color-mix(in srgb, var(--violet) 40%, var(--border))}
     .mm-hl-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#a78bfa,#7c3aed);box-shadow:0 0 8px #7c3aedaa;animation:mmDotPulse 1.4s ease infinite}
     @keyframes mmDotPulse{0%,100%{box-shadow:0 0 6px #7c3aed88;transform:scale(1)}50%{box-shadow:0 0 14px #7c3aedcc;transform:scale(1.35)}}
     @keyframes mmHlIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:translateX(0)}}
     .mm-editor-actions{display:flex;gap:6px}
     .mm-editor-body{display:flex;flex-direction:column;min-height:200px}
-    .mm-editor-code{border-bottom:1px solid #ede9fe;position:relative}
+    .mm-editor-code{border-bottom:1px solid color-mix(in srgb, var(--violet) 15%, var(--border));position:relative}
     .mm-code-label{position:absolute;top:6px;right:10px;font-size:9.5px;color:#a78bfa88;font-family:var(--font);z-index:1;pointer-events:none;letter-spacing:.01em}
     .mm-code-wrap{display:flex;background:#1e1b2e;overflow:hidden}
     .mm-line-nums{padding:10px 0;min-width:32px;text-align:right;user-select:none;flex-shrink:0;background:#16131f;border-right:1px solid #2d2640}
@@ -3946,16 +3946,16 @@ export default function MdReviewer() {
     .mm-code-input::selection{background:#7c3aed44}
     .mm-editor-preview{flex:1;position:relative}
     .mm-preview-label{position:absolute;top:6px;right:10px;font-size:10px;color:#a78bfa;font-family:var(--font);z-index:3;pointer-events:none}
-    .mm-preview-area{padding:16px;min-height:80px;max-height:320px;overflow:auto;display:flex;align-items:center;justify-content:center;background:white;margin:8px;border-radius:8px;border:1px solid #ede9fe;position:relative;transition:border-color .2s}
+    .mm-preview-area{padding:16px;min-height:80px;max-height:320px;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--surface);margin:8px;border-radius:8px;border:1px solid color-mix(in srgb, var(--violet) 15%, var(--border));position:relative;transition:border-color .2s}
     .mm-preview-area.mm-has-hl{border-color:#a78bfa;box-shadow:inset 0 0 30px #7c3aed15}
     .mm-preview-svg{width:100%;overflow-x:auto;position:relative;z-index:2;transition:opacity .3s,filter .3s}
     .mm-preview-svg svg{max-width:100%;height:auto}
     .mm-preview-svg.mm-svg-dimmed{opacity:.30;filter:saturate(.2) brightness(.85)}
     .mm-hl-spot{position:absolute;z-index:1;pointer-events:none;border-radius:18px;background:radial-gradient(ellipse at center,transparent 25%,#a78bfa55 40%,#7c3aed88 55%,#7c3aedaa 65%,#a78bfa66 78%,transparent 92%);animation:mmSpotIn .3s ease;box-shadow:0 0 32px 10px #7c3aed44,0 0 60px 20px #7c3aed22}
     @keyframes mmSpotIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
-    .mm-preview-error{color:#ef4444;font-size:12px;display:flex;align-items:center;gap:6px;font-family:var(--mono);padding:8px;background:#fef2f2;border-radius:var(--radius-sm);border:1px solid #fecaca;max-width:100%;word-break:break-all}
-    .mm-preview-empty{color:#a78bfa;font-size:13px;font-family:var(--font)}
-    .mm-editor-hint{padding:6px 14px;font-size:10px;color:#a78bfa;background:#faf5ff;border-top:1px solid #ede9fe;font-family:var(--font);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .mm-preview-error{color:var(--danger);font-size:12px;display:flex;align-items:center;gap:6px;font-family:var(--mono);padding:8px;background:var(--danger-bg);border-radius:var(--radius-sm);border:1px solid var(--danger);max-width:100%;word-break:break-all}
+    .mm-preview-empty{color:var(--violet);font-size:13px;font-family:var(--font)}
+    .mm-editor-hint{padding:6px 14px;font-size:10px;color:var(--violet);background:color-mix(in srgb, var(--violet) 5%, var(--surface));border-top:1px solid color-mix(in srgb, var(--violet) 15%, var(--border));font-family:var(--font);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
     .mm-hint-sep{opacity:.4}
 
     .ftoc{width:220px;min-width:140px;max-width:480px;background:var(--surface);border-left:none;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;animation:ftocIn .2s ease}
@@ -4212,7 +4212,7 @@ export default function MdReviewer() {
                       <span>⋮⋮ 左側手柄 → 區塊操作</span>
                     </div>
                     {blocks.map((block, i) => (
-                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction} mermaidReady={mermaidReady}/>
+                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction} mermaidReady={mermaidReady} mermaidThemeVer={mermaidThemeVer}/>
                     ))}
                     {!blocks.length && <div className="text-center py-10 text-gray-400 text-sm">檔案內容為空</div>}
                   </div>
