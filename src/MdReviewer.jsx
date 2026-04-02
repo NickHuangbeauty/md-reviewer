@@ -4110,7 +4110,7 @@ export default function MdReviewer() {
               <div className="w-px h-5 bg-gray-200 mx-1" />
             </>)}
             <button onClick={doFormat} disabled={!activeFile} className="tbtn tbtn-violet" title="整理排版"><Wand2 className="w-3.5 h-3.5" />格式化</button>
-            {flagDashboard && <button onClick={() => setShowDashboard(true)} disabled={!files.length} className={'tbtn ' + (showDashboard ? 'tbtn-blue' : 'tbtn-gray')} title="差異儀表板"><BarChart3 className="w-3.5 h-3.5" />儀表板</button>}
+            {flagDashboard && <button onClick={() => setShowDashboard(v => !v)} disabled={!files.length} className={'tbtn ' + (showDashboard ? 'tbtn-blue' : 'tbtn-gray')} title="差異儀表板"><BarChart3 className="w-3.5 h-3.5" />儀表板</button>}
             <div className="w-px h-5 bg-gray-200 mx-1" />
             <button onClick={() => importRef.current?.click()} className="tbtn tbtn-gray" title="匯入先前備份的審核狀態 (.json 檔案)"><FileUp className="w-3.5 h-3.5" />匯入狀態</button>
             <button onClick={doExport} disabled={!files.length} className="tbtn tbtn-gray" title="匯出目前的審核進度並下載備份 (.json 檔案)"><FileDown className="w-3.5 h-3.5" />匯出狀態</button>
