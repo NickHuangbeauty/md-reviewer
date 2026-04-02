@@ -1571,7 +1571,7 @@ function HtmlContentEditable({ html, onSave, onCancel }) {
   };
   return (
     <div>
-      <div style={{fontSize:'11px',color:'#999',marginBottom:'6px'}}>
+      <div style={{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}}>
         點擊文字直接編輯 · 按外面儲存
       </div>
       <div ref={ref}
@@ -1579,7 +1579,7 @@ function HtmlContentEditable({ html, onSave, onCancel }) {
         suppressContentEditableWarning
         className="pv"
         onBlur={handleBlur}
-        style={{ border: '2px solid #4a90a4', borderRadius: '4px', padding: '12px', minHeight: '40px', outline: 'none' }}
+        style={{ border: '2px solid var(--accent2)', borderRadius: '4px', padding: '12px', minHeight: '40px', outline: 'none' }}
       />
       <button className="te-btn te-cancel" style={{marginTop:'6px',fontSize:'11px'}}
         onMouseDown={() => { cancelRequestedRef.current = true; }}
@@ -3848,7 +3848,7 @@ export default function MdReviewer() {
     .te-scroll::-webkit-scrollbar-track{background:var(--surface2);border-radius:10px}
     .te-scroll::-webkit-scrollbar-thumb{background:linear-gradient(90deg,var(--accent-border),var(--border2));border-radius:10px}
     .te-scroll::-webkit-scrollbar-thumb:hover{background:linear-gradient(90deg,var(--accent2),var(--accent))}
-    .table-editor table{width:100%;border-collapse:collapse;background:white;table-layout:auto}
+    .table-editor table{width:100%;border-collapse:collapse;background:var(--surface);table-layout:auto}
     .table-editor th,.table-editor td{border:1px solid var(--border2);padding:0;text-align:left;vertical-align:top;font-size:12.5px;min-width:70px;position:relative}
     .table-editor th{background:var(--surface2);font-weight:600;font-size:12px}
     .te-row-ctrl{width:26px!important;min-width:26px!important;max-width:26px!important;padding:0!important;border:none!important;background:transparent!important;vertical-align:middle;text-align:center;position:relative}
@@ -3856,7 +3856,7 @@ export default function MdReviewer() {
     .table-editor tr:hover .te-add-row,.table-editor tr:hover .te-del-row{opacity:1}
     .te-add-row:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent2);transform:scale(1.1)}
     .te-del-row{border-color:#fca5a5;color:#f87171;font-size:15px;font-weight:600}
-    .te-del-row:hover{background:#fef2f2;color:#ef4444;border-color:#ef4444;transform:scale(1.1)}
+    .te-del-row:hover{background:var(--danger-bg);color:#ef4444;border-color:#ef4444;transform:scale(1.1)}
     .te-col-btns{display:flex;padding:0 0 0 26px;gap:0}
     .te-col-btn-group{flex:1;display:flex;flex-direction:column;align-items:stretch;gap:0}
     .te-add-col{height:20px;border:none;border-bottom:1.5px dashed var(--accent-border);background:transparent;color:var(--text3);font-size:12px;cursor:pointer;opacity:0;transition:all .15s;width:100%}
@@ -3864,7 +3864,7 @@ export default function MdReviewer() {
     .te-del-col{height:18px;border:none;border-bottom:1.5px dashed #fca5a5;background:transparent;color:#f87171;font-size:14px;font-weight:600;cursor:pointer;opacity:0;transition:all .15s;width:100%}
     .te-col-btns:hover .te-add-col,.te-col-btns:hover .te-del-col{opacity:1}
     .te-add-col:hover{background:var(--accent-bg);color:var(--accent)}
-    .te-del-col:hover{background:#fef2f2;color:#ef4444}
+    .te-del-col:hover{background:var(--danger-bg);color:#ef4444}
     .te-add-row-bottom{padding:0!important;border:none!important;background:transparent!important}
     .te-add-full{width:100%;padding:6px;border:1.5px dashed var(--border2);background:var(--surface);color:var(--text3);font-size:12px;cursor:pointer;border-radius:0 0 8px 8px;transition:all .15s;font-family:var(--font)}
     .te-add-full:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent2)}
@@ -4284,7 +4284,7 @@ export default function MdReviewer() {
                 type="text" 
                 value={downloadModal.name} 
                 onChange={e => setDownloadModal({...downloadModal, name: e.target.value})}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
               />
             </div>
             <div className="flex gap-2 justify-end">
