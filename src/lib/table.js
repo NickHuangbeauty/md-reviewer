@@ -222,6 +222,93 @@ export function gridToHtmlTable(grid) {
   return h;
 }
 
+/* ===== MERGE / SPLIT CELLS (HTML only) ===== */
+
+/** Deep clone a grid (cells + cellMeta + _originalFormat) without mutating input */
+function cloneGridDeep(grid) {
+  const cloned = grid.map(r => ({
+    ...r,
+    cells: [...r.cells],
+    cellMeta: r.cellMeta ? r.cellMeta.map(m => m ? { ...m } : null) : null,
+  }));
+  if (grid._originalFormat) cloned._originalFormat = { ...grid._originalFormat };
+  return cloned;
+}
+
+/** Ensure a cellMeta entry exists (normal primary cell) */
+function defaultMeta() {
+  return { colspan: 1, rowspan: 1, isHeader: false, style: '', align: '', height: '', primary: true };
+}
+
+/**
+ * Merge the rectangular range (r1,c1)-(r2,c2) into a single cell.
+ * Top-left becomes the primary cell (colspan = cols, rowspan = rows).
+ * All other cells in range become non-primary placeholders pointing back to the primary.
+ * Text of the primary is kept; other cells are cleared. Returns a NEW grid (input untouched).
+ * Coordinates are normalized so r1<=r2 and c1<=c2.
+ */
+export function mergeCells(grid, r1, c1, r2, c2) {
+  if (!grid || !grid.length) return grid;
+  // Normalize
+  const rTop = Math.min(r1, r2), rBot = Math.max(r1, r2);
+  const cLeft = Math.min(c1, c2), cRight = Math.max(c1, c2);
+  const nd = cloneGridDeep(grid);
+  // Ensure cellMeta exists for all rows (e.g. md grid promoted to html)
+  nd.forEach(row => { if (!row.cellMeta) row.cellMeta = row.cells.map(() => defaultMeta()); });
+  const cols = cRight - cLeft + 1;
+  const rows = rBot - rTop + 1;
+  if (cols <= 0 || rows <= 0) return nd;
+
+  for (let r = rTop; r <= rBot; r++) {
+    if (!nd[r]) continue;
+    if (!nd[r].cellMeta) nd[r].cellMeta = nd[r].cells.map(() => defaultMeta());
+    for (let c = cLeft; c <= cRight; c++) {
+      if (c >= nd[r].cells.length) continue;
+      if (r === rTop && c === cLeft) {
+        // Primary cell
+        const prev = nd[r].cellMeta[c] || defaultMeta();
+        nd[r].cellMeta[c] = { ...prev, colspan: cols, rowspan: rows, primary: true };
+        delete nd[r].cellMeta[c].spannedBy;
+      } else {
+        // Covered cell — clear text, mark non-primary
+        nd[r].cells[c] = '';
+        nd[r].cellMeta[c] = { colspan: 1, rowspan: 1, primary: false, spannedBy: { r: rTop, c: cLeft } };
+      }
+    }
+  }
+  return nd;
+}
+
+/**
+ * Split a previously-merged primary cell at (r,c) back into normal cells.
+ * Its colspan/rowspan reset to 1; the cells it used to cover become normal empty primary cells.
+ * Returns a NEW grid (input untouched).
+ */
+export function splitCell(grid, r, c) {
+  if (!grid || !grid.length || !grid[r]) return grid;
+  const nd = cloneGridDeep(grid);
+  const meta = nd[r].cellMeta?.[c];
+  if (!meta || !meta.primary) return nd;
+  const cols = meta.colspan || 1;
+  const rows = meta.rowspan || 1;
+  if (cols <= 1 && rows <= 1) return nd;
+
+  for (let dr = 0; dr < rows; dr++) {
+    for (let dc = 0; dc < cols; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (!nd[rr] || cc >= nd[rr].cells.length) continue;
+      if (!nd[rr].cellMeta) nd[rr].cellMeta = nd[rr].cells.map(() => defaultMeta());
+      if (dr === 0 && dc === 0) {
+        nd[rr].cellMeta[cc] = { ...meta, colspan: 1, rowspan: 1, primary: true };
+        delete nd[rr].cellMeta[cc].spannedBy;
+      } else {
+        nd[rr].cellMeta[cc] = defaultMeta();
+      }
+    }
+  }
+  return nd;
+}
+
 /* ===== CELL INLINE MD ===== */
 export function renderCellMd(text) {
   if (!text) return '\u00A0';
