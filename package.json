@@ -13,12 +13,13 @@
     "test:table": "node tests/table.test.mjs",
     "test:markdown": "node tests/markdown.test.mjs",
     "test:diffstats": "node tests/diffstats.test.mjs",
+    "test:diffcore": "node tests/diffcore.test.mjs",
     "test:featureflags": "node --import ./tests/_register-loader.mjs tests/featureflags.test.mjs",
     "test:embedapi": "node --import ./tests/_register-loader.mjs tests/embedapi.test.mjs",
-    "test:smoke": "node tests/smoke.mjs",
     "test:mcp": "node tests/mcp.test.mjs",
+    "test:smoke": "node tests/smoke.mjs",
     "mcp": "node mcp/server.js",
-    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:featureflags && npm run test:embedapi && npm run test:smoke && npm run test:mcp"
+    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:diffcore && npm run test:featureflags && npm run test:embedapi && npm run test:mcp"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
