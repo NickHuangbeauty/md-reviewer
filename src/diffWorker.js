@@ -4,6 +4,7 @@
 // Phase 3: Enhanced normalization
 import { diffTrimmedLines, diffChars } from 'diff';
 import { validateEdits, validateStats, mergeReports } from './canary.js';
+import { computeDiffStats } from './diffStats.js';
 
 // ===== Utilities =====
 
@@ -66,6 +67,9 @@ function parseBlocks(text) {
   let inMdTable = false;
   let inCodeFence = false;
   let inHtmlDiv = false;
+  // Running tag-balance counters so we don't re-join + re-scan the whole buffer
+  // on every line inside an HTML table/div (that was O(H^2) per block).
+  let tableOpens = 0, tableCloses = 0, divOpens = 0, divCloses = 0;
 
   const flush = (type) => {
     if (buf.length) {
@@ -107,47 +111,43 @@ function parseBlocks(text) {
     }
     if (inCodeFence) { buf.push(l); continue; }
 
-    // HTML table
+    // HTML table — track tag balance incrementally (running counters, O(1)/line)
     if (!inHtmlTable && /<table/i.test(t)) {
       flush(blockType);
       bufStart = i;
       inHtmlTable = true;
       blockType = 'html-table';
+      tableOpens = (l.match(/<table/gi) || []).length;
+      tableCloses = (l.match(/<\/table>/gi) || []).length;
       buf.push(l);
-      const fullBuf = buf.join('\n');
-      const opens = (fullBuf.match(/<table/gi) || []).length;
-      const closes = (fullBuf.match(/<\/table>/gi) || []).length;
-      if (closes >= opens) { inHtmlTable = false; flush('html-table'); }
+      if (tableCloses >= tableOpens) { inHtmlTable = false; flush('html-table'); }
       continue;
     }
     if (inHtmlTable) {
       buf.push(l);
-      const fullBuf = buf.join('\n');
-      const opens = (fullBuf.match(/<table/gi) || []).length;
-      const closes = (fullBuf.match(/<\/table>/gi) || []).length;
-      if (closes >= opens) { inHtmlTable = false; flush('html-table'); }
+      tableOpens += (l.match(/<table/gi) || []).length;
+      tableCloses += (l.match(/<\/table>/gi) || []).length;
+      if (tableCloses >= tableOpens) { inHtmlTable = false; flush('html-table'); }
       continue;
     }
 
-    // HTML div block
+    // HTML div block — running counters as above
     if (!inHtmlDiv && /^<div[\s>]/i.test(t)) {
       flush(blockType);
       bufStart = i;
       inHtmlDiv = true;
       blockType = 'html-div';
+      divOpens = (l.match(/<div[\s>]/gi) || []).length;
+      divCloses = (l.match(/<\/div>/gi) || []).length;
       buf.push(l);
-      const fullBuf = buf.join('\n');
-      if ((fullBuf.match(/<\/div>/gi) || []).length >= (fullBuf.match(/<div[\s>]/gi) || []).length) {
-        inHtmlDiv = false; flush('html-div');
-      }
+      if (divCloses >= divOpens) { inHtmlDiv = false; flush('html-div'); }
       continue;
     }
     if (inHtmlDiv) {
       buf.push(l);
-      const fullBuf = buf.join('\n');
-      if ((fullBuf.match(/<\/div>/gi) || []).length >= (fullBuf.match(/<div[\s>]/gi) || []).length) {
-        inHtmlDiv = false; flush('html-div');
-      }
+      divOpens += (l.match(/<div[\s>]/gi) || []).length;
+      divCloses += (l.match(/<\/div>/gi) || []).length;
+      if (divCloses >= divOpens) { inHtmlDiv = false; flush('html-div'); }
       continue;
     }
 
@@ -239,32 +239,38 @@ function computeFingerprint(text) {
 // ===== Phase 1: Block Matching =====
 
 /** Token-Set Jaccard similarity between two texts (CJK-aware) */
-function tokenSetJaccard(textA, textB) {
-  const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/;
-  const tokenize = (t) => {
-    const set = new Set();
-    // Split on whitespace, pipes, and common delimiters for fine-grained comparison
-    for (const w of t.toLowerCase().split(/[\s|,;:(){}\[\]<>]+/)) {
-      if (!w || /^-+$/.test(w)) continue; // skip empty and separator dashes
-      if (CJK_RE.test(w)) {
-        for (const ch of w) { if (ch.trim()) set.add(ch); }
-      } else {
-        set.add(w);
-      }
+const JACCARD_CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff00-\uffef]/;
+
+/** Tokenize text into a Set for Jaccard comparison (CJK split per-char). */
+function tokenizeForJaccard(t) {
+  const set = new Set();
+  // Split on whitespace, pipes, and common delimiters for fine-grained comparison
+  for (const w of t.toLowerCase().split(/[\s|,;:(){}\[\]<>]+/)) {
+    if (!w || /^-+$/.test(w)) continue; // skip empty and separator dashes
+    if (JACCARD_CJK_RE.test(w)) {
+      for (const ch of w) { if (ch.trim()) set.add(ch); }
+    } else {
+      set.add(w);
     }
-    return set;
-  };
-  const setA = tokenize(textA);
-  const setB = tokenize(textB);
+  }
+  return set;
+}
+
+/** Jaccard similarity from two pre-built token Sets. */
+function jaccardFromSets(setA, setB) {
   if (setA.size === 0 && setB.size === 0) return 1;
   if (setA.size === 0 || setB.size === 0) return 0;
-
+  // iterate the smaller set for the intersection
+  const small = setA.size <= setB.size ? setA : setB;
+  const large = small === setA ? setB : setA;
   let intersection = 0;
-  for (const token of setA) {
-    if (setB.has(token)) intersection++;
-  }
+  for (const token of small) { if (large.has(token)) intersection++; }
   const union = setA.size + setB.size - intersection;
   return union === 0 ? 0 : intersection / union;
+}
+
+function tokenSetJaccard(textA, textB) {
+  return jaccardFromSets(tokenizeForJaccard(textA), tokenizeForJaccard(textB));
 }
 
 /**
@@ -311,19 +317,59 @@ function matchBlocks(oldBlocks, newBlocks) {
     if (!usedNew.has(i)) remainingNew.push(i);
   }
 
-  // Build similarity candidates
+  // Build similarity candidates. The old code was an unbounded O(N*M) scan that
+  // re-tokenized both texts for every pair. Instead: pre-tokenize each block once,
+  // then use an inverted index (token -> old blocks) so we only score pairs that
+  // share at least one token. Pairs with no shared token have Jaccard 0 and could
+  // never clear the 0.3 threshold, so the candidate set — and thus the diff output
+  // — is identical. Empty-token blocks (Jaccard 1 only with each other) are matched
+  // separately by type to preserve that exact-match edge case.
+  const oldTok = new Map();   // oi -> token Set
+  const tokenIndex = new Map(); // token -> [oi, ...] (non-empty old blocks)
+  const emptyOldByType = new Map(); // type -> [oi] (empty-token old blocks)
+  for (const oi of remainingOld) {
+    const set = tokenizeForJaccard(oldBlocks[oi].text);
+    oldTok.set(oi, set);
+    if (set.size === 0) {
+      const ty = oldBlocks[oi].type;
+      if (!emptyOldByType.has(ty)) emptyOldByType.set(ty, []);
+      emptyOldByType.get(ty).push(oi);
+      continue;
+    }
+    for (const tok of set) {
+      let list = tokenIndex.get(tok);
+      if (!list) { list = []; tokenIndex.set(tok, list); }
+      list.push(oi);
+    }
+  }
+
   const candidates = [];
   for (const ni of remainingNew) {
-    for (const oi of remainingOld) {
-      if (oldBlocks[oi].type !== newBlocks[ni].type) continue;
-      const sim = tokenSetJaccard(oldBlocks[oi].text, newBlocks[ni].text);
-      if (sim > 0.3) {
-        candidates.push({ ni, oi, sim });
+    const ty = newBlocks[ni].type;
+    const sn = tokenizeForJaccard(newBlocks[ni].text);
+    if (sn.size === 0) {
+      // Jaccard 1 only with same-type empty-token old blocks
+      const list = emptyOldByType.get(ty);
+      if (list) for (const oi of list) candidates.push({ ni, oi, sim: 1 });
+      continue;
+    }
+    const seen = new Set();
+    for (const tok of sn) {
+      const list = tokenIndex.get(tok);
+      if (!list) continue;
+      for (const oi of list) {
+        if (seen.has(oi)) continue;
+        seen.add(oi);
+        if (oldBlocks[oi].type !== ty) continue;
+        const sim = jaccardFromSets(oldTok.get(oi), sn);
+        if (sim > 0.3) candidates.push({ ni, oi, sim });
       }
     }
   }
-  // Greedy: best similarity first
-  candidates.sort((a, b) => b.sim - a.sim);
+  // Greedy: best similarity first. Explicit tiebreak (ni asc, oi asc) reproduces
+  // the old code's stable-sort-over-insertion-order, so ties resolve identically
+  // regardless of the inverted index's different candidate-generation order.
+  candidates.sort((a, b) => (b.sim - a.sim) || (a.ni - b.ni) || (a.oi - b.oi));
   for (const { ni, oi } of candidates) {
     if (usedOld.has(oi) || usedNew.has(ni)) continue;
     pairs.set(ni, oi);
@@ -647,61 +693,8 @@ function computeAndStreamDiff(id, oldText, newText) {
 
 // ===== Stats-only computation (for Dashboard) =====
 
-function isEmptyOrWhitespaceWorker(line) {
-  if (!line) return true;
-  const t = line.trim();
-  if (!t) return true;
-
-  // Markdown 表格分隔行 |---|---|---| 視為結構標記
-  if (/^\|[\s-:]+\|[\s-:|]*$/.test(t)) return true;
-
-  // Markdown 空表格行 |||| 或 |   |   |   |
-  if (/^\|[\s|]*\|$/.test(t)) {
-    const content = t.replace(/\|/g, '').trim();
-    if (!content) return true;
-  }
-
-  // HTML 結構屬性（colspan, rowspan, height）視為有意義
-  if (/colspan|rowspan|height/i.test(t)) return false;
-
-  // 純空的 <td></td> 或 <th></th>
-  if (/^<(td|th)>\s*<\/(td|th)>$/i.test(t)) return true;
-
-  // 空白 HTML 標籤（無文字內容）
-  if (/^<\w+[^>]*>\s*<\/\w+>$/.test(t) && !/colspan|rowspan/i.test(t)) {
-    const content = t.replace(/<[^>]*>/g, '').trim();
-    if (!content) return true;
-  }
-
-  // 自封閉 HTML 區塊標籤
-  if (/^<\/?(?:br|hr|p|div|tr|td|th|table|thead|tbody)[\s/>]*$/i.test(t)) return true;
-
-  return false;
-}
-
-function computeStatsFromEdits(edits) {
-  const added = edits.filter(e => e.type === 'add').length;
-  const deleted = edits.filter(e => e.type === 'del').length;
-  const modified = edits.filter(e => e.type === 'modify').length;
-  const unchanged = edits.filter(e => e.type === 'eq').length;
-  const oldTotal = deleted + unchanged + modified;
-
-  let meaningfulAdded = 0, meaningfulDeleted = 0;
-  edits.forEach(e => {
-    if (e.type === 'add') meaningfulAdded += isEmptyOrWhitespaceWorker(e.newLine) ? 0.1 : 1;
-    else if (e.type === 'del') meaningfulDeleted += isEmptyOrWhitespaceWorker(e.oldLine) ? 0.1 : 1;
-  });
-
-  const weightedChanges = meaningfulAdded + meaningfulDeleted;
-
-  const meaningfulOldTotal = edits.filter(e =>
-    (e.type === 'del' || e.type === 'eq' || e.type === 'modify') && !isEmptyOrWhitespaceWorker(e.oldLine)
-  ).length || oldTotal || 1;
-
-  const changeRatio = Math.min(meaningfulOldTotal > 0 ? weightedChanges / meaningfulOldTotal : (added > 0 ? 1 : 0), 1.0);
-
-  return { added, deleted, modified, unchanged, changed: added + deleted + modified, changeRatio, oldTotal };
-}
+// change-magnitude stats now live in ./diffStats.js (computeDiffStats),
+// shared with the main thread so the two surfaces can't drift apart.
 
 function computeStatsOnly(id, oldText, newText) {
   const normOld = normalizeTextForDiff(oldText || '');
@@ -731,7 +724,7 @@ function computeStatsOnly(id, oldText, newText) {
     }
   }
 
-  const stats = computeStatsFromEdits(allEdits);
+  const stats = computeDiffStats(allEdits);
 
   // Canary assertions
   const canary = mergeReports(validateEdits(allEdits), validateStats(stats, allEdits));
@@ -858,7 +851,7 @@ function legacyComputeStatsOnly(id, oldText, newText) {
     }
   }
 
-  const stats = computeStatsFromEdits(edits);
+  const stats = computeDiffStats(edits);
 
   const canary = mergeReports(validateEdits(edits), validateStats(stats, edits));
   if (canary.violations.length > 0) {

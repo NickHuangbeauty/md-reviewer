@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon } from 'lucide-react';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
+import { computeDiffStats } from './diffStats.js';
 import renderMathInElement from 'katex/contrib/auto-render';
 
 
@@ -16,6 +17,9 @@ function splitMdBlocks(text) {
   let inCodeFence = false;
   let inHtmlDiv = false;
   let inMathFence = false;
+  // Running tag-balance counters — avoid re-joining + re-scanning the whole
+  // buffer on every line inside an HTML table/div (was O(H^2) per block).
+  let tableOpens = 0, tableCloses = 0, divOpens = 0, divCloses = 0;
 
   const flush = () => {
     if (buf.length) {
@@ -55,37 +59,37 @@ function splitMdBlocks(text) {
     }
     if (inMathFence) { buf.push(l); continue; }
 
-    // HTML table (track nesting depth)
+    // HTML table — running tag-balance counters (O(1) per line)
     if (!inHtmlTable && /<table/i.test(t)) {
       flush(); inHtmlTable = true;
-      let depth = (t.match(/<table/gi) || []).length - (t.match(/<\/table>/gi) || []).length;
+      tableOpens = (l.match(/<table/gi) || []).length;
+      tableCloses = (l.match(/<\/table>/gi) || []).length;
       buf.push(l);
-      if (depth <= 0) { inHtmlTable = false; flush(); }
+      if (tableCloses >= tableOpens) { inHtmlTable = false; flush(); }
       continue;
     }
     if (inHtmlTable) {
       buf.push(l);
-      const opens = (t.match(/<table/gi) || []).length;
-      const closes = (t.match(/<\/table>/gi) || []).length;
-      // Check if we've closed all tables on this accumulated buffer
-      const fullBuf = buf.join('\n');
-      const totalOpens = (fullBuf.match(/<table/gi) || []).length;
-      const totalCloses = (fullBuf.match(/<\/table>/gi) || []).length;
-      if (totalCloses >= totalOpens) { inHtmlTable = false; flush(); }
+      tableOpens += (l.match(/<table/gi) || []).length;
+      tableCloses += (l.match(/<\/table>/gi) || []).length;
+      if (tableCloses >= tableOpens) { inHtmlTable = false; flush(); }
       continue;
     }
 
-    // HTML div block (track open/close)
+    // HTML div block — running counters as above
     if (!inHtmlDiv && /^<div[\s>]/i.test(t)) {
-      flush(); inHtmlDiv = true; buf.push(l);
-      const fullBuf = buf.join('\n');
-      if ((fullBuf.match(/<\/div>/gi) || []).length >= (fullBuf.match(/<div[\s>]/gi) || []).length) { inHtmlDiv = false; flush(); }
+      flush(); inHtmlDiv = true;
+      divOpens = (l.match(/<div[\s>]/gi) || []).length;
+      divCloses = (l.match(/<\/div>/gi) || []).length;
+      buf.push(l);
+      if (divCloses >= divOpens) { inHtmlDiv = false; flush(); }
       continue;
     }
     if (inHtmlDiv) {
       buf.push(l);
-      const fullBuf = buf.join('\n');
-      if ((fullBuf.match(/<\/div>/gi) || []).length >= (fullBuf.match(/<div[\s>]/gi) || []).length) { inHtmlDiv = false; flush(); }
+      divOpens += (l.match(/<div[\s>]/gi) || []).length;
+      divCloses += (l.match(/<\/div>/gi) || []).length;
+      if (divCloses >= divOpens) { inHtmlDiv = false; flush(); }
       continue;
     }
 
@@ -2365,80 +2369,8 @@ function computeLineSimilarity(line1, line2) {
 }
 
 // 檢查是否為「無意義」的行（純空行、無結構意義的空標籤、Markdown 表格分隔行等）
-function isEmptyOrWhitespace(line) {
-  if (!line) return true;
-  const trimmed = line.trim();
-  if (!trimmed) return true;
-
-  // Markdown 表格分隔行 |---|---|---| 視為結構標記，降低權重
-  if (/^\|[\s-:]+\|[\s-:|]*$/.test(trimmed)) return true;
-
-  // Markdown 空表格行 |||| 或 |   |   |   | 視為無意義
-  if (/^\|[\s|]*\|$/.test(trimmed)) {
-    const content = trimmed.replace(/\|/g, '').trim();
-    if (!content) return true;
-  }
-
-  // 如果是空的 HTML 標籤，但有結構屬性（colspan, rowspan, height），則視為有意義
-  if (/colspan|rowspan|height/i.test(trimmed)) return false;
-
-  // 純空的 <td></td> 或 <th></th>（無任何屬性）才算無意義
-  if (/^<(td|th)>\s*<\/(td|th)>$/i.test(trimmed)) return true;
-
-  // 只有空白的標籤
-  if (/^<\w+[^>]*>\s*<\/\w+>$/.test(trimmed) && !/colspan|rowspan/i.test(trimmed)) {
-    // 檢查是否只是空白標籤（無文字內容）
-    const content = trimmed.replace(/<[^>]*>/g, '').trim();
-    if (!content) return true;
-  }
-
-  return false;
-}
-
-function computeDiffStats(edits) {
-  const total = edits.length;
-  const added = edits.filter(e => e.type === 'add').length;
-  const deleted = edits.filter(e => e.type === 'del').length;
-  const modified = edits.filter(e => e.type === 'modify').length;
-  const unchanged = edits.filter(e => e.type === 'eq').length;
-
-  // 原始文件總行數（eq + del + modify 都來自舊文件）
-  const oldTotal = deleted + unchanged + modified;
-
-  // 計算「有意義」的變更（排除空行/空標籤）
-  let meaningfulAdded = 0;
-  let meaningfulDeleted = 0;
-
-  edits.forEach(e => {
-    if (e.type === 'add') {
-      if (!isEmptyOrWhitespace(e.newLine)) {
-        meaningfulAdded += 1;
-      } else {
-        meaningfulAdded += 0.1;
-      }
-    } else if (e.type === 'del') {
-      if (!isEmptyOrWhitespace(e.oldLine)) {
-        meaningfulDeleted += 1;
-      } else {
-        meaningfulDeleted += 0.1;
-      }
-    }
-  });
-
-  // 變更幅度：(新增 + 刪除) ÷ 原始行數，微調不計入，上限 100%
-  const weightedChanges = meaningfulAdded + meaningfulDeleted;
-
-  // 有意義的原始行數（排除空行）
-  const meaningfulOldTotal = edits.filter(e =>
-    (e.type === 'del' || e.type === 'eq' || e.type === 'modify') &&
-    !isEmptyOrWhitespace(e.oldLine)
-  ).length || oldTotal || 1;
-
-  const rawRatio = meaningfulOldTotal > 0 ? weightedChanges / meaningfulOldTotal : (added > 0 ? 1 : 0);
-  const changeRatio = Math.min(rawRatio, 1.0);
-
-  return { total, added, deleted, modified, unchanged, changed: added + deleted + modified, changeRatio, oldTotal };
-}
+// isEmptyOrWhitespace + computeDiffStats now live in ./diffStats.js (imported above),
+// shared with diffWorker.js so the change-magnitude formula has one source of truth.
 
 function DownloadConfirmModal({ filename, onConfirm, onClose }) {
   const [name, setName] = useState(filename);
@@ -3045,7 +2977,24 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
   const flagDiffFold = useFeatureFlag('diff-fold');
   const workerRef = useRef(null);
   const requestIdRef = useRef(0);
-  
+  // Streaming buffer: accumulate incoming edit batches in a ref and flush to
+  // state once per animation frame, instead of one setEdits per worker message.
+  // The old per-message [...prev, ...batch] was O(K^2) in both array copying and
+  // memo recomputation (stats/pairs/folds re-ran on every batch).
+  const pendingEditsRef = useRef([]);
+  const flushRafRef = useRef(null);
+  const flushPendingEdits = useCallback(() => {
+    flushRafRef.current = null;
+    if (pendingEditsRef.current.length === 0) return;
+    const batch = pendingEditsRef.current;
+    pendingEditsRef.current = [];
+    setEdits(prev => prev.concat(batch));
+  }, []);
+  const resetStreamBuffer = useCallback(() => {
+    pendingEditsRef.current = [];
+    if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null; }
+  }, []);
+
   // Threshold for large content (characters)
   const LARGE_CONTENT_THRESHOLD = 3000;
   const isLargeContent = (originalContent?.length || 0) > LARGE_CONTENT_THRESHOLD || 
@@ -3062,12 +3011,21 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
 
       if (type === 'progress') {
         if (newEdits && newEdits.length > 0) {
-          setEdits(prev => [...prev, ...newEdits]);
+          const pend = pendingEditsRef.current;
+          for (let k = 0; k < newEdits.length; k++) pend.push(newEdits[k]);
+          if (flushRafRef.current == null) flushRafRef.current = requestAnimationFrame(flushPendingEdits);
         }
         if (typeof newProgress === 'number') {
           setProgress(newProgress);
         }
       } else if (type === 'complete') {
+        // Flush any buffered edits immediately so the final view is complete
+        if (flushRafRef.current != null) { cancelAnimationFrame(flushRafRef.current); flushRafRef.current = null; }
+        if (pendingEditsRef.current.length > 0) {
+          const batch = pendingEditsRef.current;
+          pendingEditsRef.current = [];
+          setEdits(prev => prev.concat(batch));
+        }
         // Canary report logging
         if (canary) {
           canary.violations?.forEach(v => console.warn('[Canary]', id, v.code, v.message));
@@ -3081,9 +3039,9 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
         setIsCalculating(false);
       }
     };
-    return () => workerRef.current?.terminate();
+    return () => { workerRef.current?.terminate(); if (flushRafRef.current != null) cancelAnimationFrame(flushRafRef.current); };
   }, []);
-  
+
   // Auto-enable manual mode for large content
   useEffect(() => {
     if (isLargeContent && !manualMode) {
@@ -3107,6 +3065,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
       if (workerRef.current) {
         requestIdRef.current++;
         setIsCalculating(true);
+        resetStreamBuffer();
         setEdits([]); // Reset edits for streaming
         setExpandedFolds(new Set());
         setProgress(0);
@@ -3126,6 +3085,7 @@ function DiffViewer({ originalContent, currentContent, fileName }) {
     if (workerRef.current) {
       requestIdRef.current++;
       setIsCalculating(true);
+      resetStreamBuffer();
       setEdits([]); // Reset edits for streaming
       setProgress(0);
       workerRef.current.postMessage({
