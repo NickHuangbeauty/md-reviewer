@@ -3,7 +3,30 @@ import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
+import DOMPurify from 'dompurify';
 import renderMathInElement from 'katex/contrib/auto-render';
+
+// Sanitize user/LLM-provided HTML before it is injected via dangerouslySetInnerHTML.
+// Keeps the rich-document formatting the tool exists to show (tables, styled divs,
+// <style> blocks, classes) but strips script execution vectors (<script>, on*=,
+// javascript:, iframe/object/embed/form). Applied ONLY to user HTML blocks — never
+// to the app's own generated markup (e.g. the code-block copy button's onclick).
+function sanitizeUserHtml(dirty) {
+  return DOMPurify.sanitize(dirty, {
+    ADD_TAGS: ['style'],
+    ADD_ATTR: ['colspan', 'rowspan', 'align', 'valign', 'target'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+    ALLOW_DATA_ATTR: false,
+    FORCE_BODY: true, // keep a leading <style> in the output (else parsed into <head> and dropped)
+  });
+}
+
+// Reject dangerous URL schemes in Markdown links ([text](javascript:...)).
+function safeLinkHref(url) {
+  const collapsed = (url || '').replace(/[\x00-\x20]+/g, '');
+  if (/^(javascript|data|vbscript):/i.test(collapsed)) return '#';
+  return (url || '').trim().replace(/"/g, '&quot;');
+}
 
 
 /* ===== MD BLOCK SPLITTER ===== */
@@ -153,7 +176,7 @@ function parseMarkdownTable(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/~~(.+?)~~/g, '<del>$1</del>')
     .replace(/`([^`]+)`/g, '<code class="cd">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (mm, txt, url) => `<a href="${safeLinkHref(url)}" class="md-link">${txt}</a>`);
   let h = '<table class="md-table">\n';
   rows.forEach(r => { h += '<tr>'; r.cells.forEach(c => { const t = r.isHeader ? 'th' : 'td'; h += `<${t}>${inlineMd(c)}</${t}>`; }); h += '</tr>\n'; });
   return h + '</table>';
@@ -324,8 +347,8 @@ function parseBlockToHtml(text) {
     // (skip the blockquote check to avoid re-triggering)
     let h = inner;
     const bl = [];
-    h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
-    h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
+    h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(sanitizeUserHtml(m)); return `{{B${bl.length - 1}}}`; });
+    h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { bl.push(/^<style[\s>]/i.test(m) ? _scopeStyleBlock(m, '.pv') : sanitizeUserHtml(m)); return `{{B${bl.length - 1}}}`; });
     h = h.replace(/((?:^\|.+\|$\n?)+)/gm, m => { const t = parseMarkdownTable(m); if (t) { bl.push(t); return `{{B${bl.length - 1}}}\n`; } return m; });
     h = h.replace(/^##### (.+)$/gm, '<h5>$1</h5>').replace(/^#### (.+)$/gm, '<h4>$1</h4>').replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
     h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -333,18 +356,22 @@ function parseBlockToHtml(text) {
     h = h.replace(/`([^`]+)`/g, '<code class="cd">$1</code>').replace(/^---$/gm, '<hr/>');
     h = h.replace(/\[x\]/gi, '<input type="checkbox" checked disabled class="md-checkbox" />');
     h = h.replace(/\[ \]/g, '<input type="checkbox" disabled class="md-checkbox" />');
-    h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
+    h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (mm, txt, url) => `<a href="${safeLinkHref(url)}" class="md-link">${txt}</a>`);
     h = h.split('\n').map(l => { const t = l.trim(); if (!t || t.startsWith('<') || t.startsWith('{{B')) return l; return `<p>${t}</p>`; }).join('\n');
+    // Sanitize the assembled fragment to catch bare inline HTML (e.g. a top-level
+    // <img onerror=...> not wrapped in a div/table). Placeholders are plain text and
+    // survive; the extracted blocks (already sanitized / style scoped) are re-inserted after.
+    h = sanitizeUserHtml(h);
     bl.forEach((b, i) => { h = h.replace(`{{B${i}}}`, b); });
-    
+
     return openTags + h + closeTags;
   }
 
   let h = text;
   const bl = [];
   // Preserve HTML blocks: table (including nested/comments), div, pre, style
-  h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(m); return `{{B${bl.length - 1}}}`; });
-  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { if (/^<style[\s>]/i.test(m)) { m = _scopeStyleBlock(m, '.pv'); } bl.push(m); return `{{B${bl.length - 1}}}`; });
+  h = h.replace(/<table[\s\S]*<\/table>/gi, m => { bl.push(sanitizeUserHtml(m)); return `{{B${bl.length - 1}}}`; });
+  h = h.replace(/<(div|pre|style)[\s\S]*?<\/\1>/gi, m => { bl.push(/^<style[\s>]/i.test(m) ? _scopeStyleBlock(m, '.pv') : sanitizeUserHtml(m)); return `{{B${bl.length - 1}}}`; });
   h = h.replace(/((?:^\|.+\|$\n?)+)/gm, m => { const t = parseMarkdownTable(m); if (t) { bl.push(t); return `{{B${bl.length - 1}}}\n`; } return m; });
   h = h.replace(/^##### (.+)$/gm, '<h5>$1</h5>').replace(/^#### (.+)$/gm, '<h4>$1</h4>').replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>');
   h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -383,10 +410,14 @@ function parseBlockToHtml(text) {
   // Checkbox syntax (must be before link regex to avoid conflicts)
   h = h.replace(/\[x\]/gi, '<input type="checkbox" checked disabled class="md-checkbox" />');
   h = h.replace(/\[ \]/g, '<input type="checkbox" disabled class="md-checkbox" />');
-  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>');
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (mm, txt, url) => `<a href="${safeLinkHref(url)}" class="md-link">${txt}</a>`);
   h = h.replace(/<!--\s*image\s*-->/gi, '<div class="img-ph">[圖片]</div>');
   h = h.replace(/<!--\s*spacer\s*-->/gi, '<div class="spacer-block">&nbsp;</div>');
   h = h.split('\n').map(l => { const t = l.trim(); if (!t || t.startsWith('<') || t.startsWith('{{B')) return l; return `<p>${t}</p>`; }).join('\n');
+  // Sanitize the assembled fragment to catch bare inline HTML (e.g. a top-level
+  // <img onerror=...> not wrapped in a div/table). Placeholders are plain text and
+  // survive; the extracted blocks (already sanitized / style scoped) are re-inserted after.
+  h = sanitizeUserHtml(h);
   bl.forEach((b, i) => {
     // Wrap tables in scroll container
     const isTable = /<table/i.test(b);
@@ -796,7 +827,7 @@ function renderCellMd(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/~~(.+?)~~/g, '<del>$1</del>')
     .replace(/`([^`]+)`/g, '<code class="cd">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link" target="_blank">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (mm, txt, url) => `<a href="${safeLinkHref(url)}" class="md-link" target="_blank">${txt}</a>`);
   h = h.split('\n').join('<br>');
   return h;
 }
