@@ -3,6 +3,7 @@ import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
+import { mergeCells, splitCell, canMerge, rangeHasContent, isMergedPrimary } from './tableModel.js';
 import DOMPurify from 'dompurify';
 import renderMathInElement from 'katex/contrib/auto-render';
 
@@ -874,8 +875,42 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   const initialGridRef = useRef(cloneGrid(grid)); // 保存原始 grid 用於比較
   dataRef.current = data;
 
+  // ── cell merge/split: drag-select range, output format, undo/redo history ──
+  const [selRange, setSelRange] = useState(null);   // {r1,c1,r2,c2} during/after a drag-select
+  const [outFmt, setOutFmt] = useState(outputFormat); // merging forces 'html'
+  const dragRef = useRef({ active: false, moved: false });
+  const histRef = useRef([cloneGrid(grid)]);
+  const hiRef = useRef(0);
+
+  const commitGrid = (ng) => {
+    histRef.current = histRef.current.slice(0, hiRef.current + 1);
+    histRef.current.push(cloneGrid(ng));
+    hiRef.current++;
+    setStructureChanged(true);
+    setData(ng);
+  };
+  const undoEdit = () => { if (hiRef.current > 0) { hiRef.current--; setData(cloneGrid(histRef.current[hiRef.current])); setSelRange(null); } };
+  const redoEdit = () => { if (hiRef.current < histRef.current.length - 1) { hiRef.current++; setData(cloneGrid(histRef.current[hiRef.current])); setSelRange(null); } };
+
+  const normRange = (s) => s ? { r1: Math.min(s.r1, s.r2), c1: Math.min(s.c1, s.c2), r2: Math.max(s.r1, s.r2), c2: Math.max(s.c1, s.c2) } : null;
+  const cellInSel = (ri, ci) => { const s = normRange(selRange); return s && ri >= s.r1 && ri <= s.r2 && ci >= s.c1 && ci <= s.c2; };
+  const selSingleMerged = () => { const s = normRange(selRange); return s && s.r1 === s.r2 && s.c1 === s.c2 && isMergedPrimary(data, s.r1, s.c1); };
+
+  const onCellMouseDown = (ri, ci) => { dragRef.current = { active: true, moved: false }; setSelRange({ r1: ri, c1: ci, r2: ri, c2: ci }); };
+  const onCellMouseEnter = (ri, ci) => { if (!dragRef.current.active) return; setSelRange(prev => { if (!prev) return prev; if (prev.r2 !== ri || prev.c2 !== ci) dragRef.current.moved = true; return { ...prev, r2: ri, c2: ci }; }); };
+
+  const doMergeSel = () => {
+    const s = normRange(selRange);
+    if (!s || !canMerge(data, s)) return;
+    if (rangeHasContent(data, s) && !window.confirm('其餘格內容將被清除，確定？')) return;
+    commitGrid(mergeCells(data, s));
+    if (outFmt !== 'html') setOutFmt('html');
+    setSelRange({ r1: s.r1, c1: s.c1, r2: s.r1, c2: s.c1 });
+  };
+  const doSplitSel = () => { const s = normRange(selRange); if (selSingleMerged()) { commitGrid(splitCell(data, s.r1, s.c1)); } };
+
   const hasMeta = data.some(r => r.cellMeta && r.cellMeta.some(m => m && (m.colspan > 1 || m.rowspan > 1)));
-  const serialize = (d) => outputFormat === 'html' ? gridToHtmlTable(d) : gridToMdTable(d);
+  const serialize = (d) => outFmt === 'html' ? gridToHtmlTable(d) : gridToMdTable(d);
 
   useEffect(() => {
     const handler = (e) => {
@@ -897,6 +932,13 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   const updateCell = (ri, ci, val) => {
     setData(prev => prev.map((r, i) => i === ri ? { ...r, cells: r.cells.map((c, j) => j === ci ? val : c) } : r));
   };
+
+  // End a drag-select on mouseup anywhere.
+  useEffect(() => {
+    const up = () => { dragRef.current.active = false; };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
 
   const colCount = Math.max(...data.map(r => r.cells.length), 1);
 
@@ -986,8 +1028,10 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
       cellElements.push(
         <Tag key={ci}
           {...spanProps}
-          className={isFocused ? 'cell-focus' : 'cell-normal'}
-          onClick={() => setFocusCell([ri, ci])}
+          className={(isFocused ? 'cell-focus' : 'cell-normal') + (cellInSel(ri, ci) ? ' cell-sel' : '')}
+          onMouseDown={() => onCellMouseDown(ri, ci)}
+          onMouseOver={() => onCellMouseEnter(ri, ci)}
+          onClick={() => { if (dragRef.current.moved) { dragRef.current.moved = false; return; } setSelRange(null); setFocusCell([ri, ci]); }}
           onContextMenu={e => handleCtxMenu(e, ri, ci)}>
           {isFocused ? (
             <textarea value={cell}
@@ -1024,6 +1068,15 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
 
   return (
     <div className="table-editor" ref={wrapRef}>
+      {selRange && (
+        <div className="te-merge-bar" onMouseDown={e => e.preventDefault()}>
+          <button className="te-mbtn" disabled={!canMerge(data, normRange(selRange))} onClick={doMergeSel} title="合併選取的儲存格">⛶ 合併儲存格</button>
+          <button className="te-mbtn" disabled={!selSingleMerged()} onClick={doSplitSel} title="分割已合併的儲存格">⊟ 分割</button>
+          <span className="te-mbar-sep" />
+          <button className="te-mbtn" onClick={undoEdit} title="復原">↶ 復原</button>
+          <button className="te-mbtn" onClick={redoEdit} title="重做">↷ 重做</button>
+        </div>
+      )}
       {/* Column add buttons on top */}
       <div className="te-col-btns">
         <button className="te-add-col" title="在最左邊插入欄"
@@ -3921,10 +3974,17 @@ export default function MdReviewer() {
     .te-add-full{width:100%;padding:6px;border:1.5px dashed var(--border2);background:var(--surface);color:var(--text3);font-size:12px;cursor:pointer;border-radius:0 0 8px 8px;transition:all .15s;font-family:var(--font)}
     .te-add-full:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent2)}
     .cell-normal{cursor:text;padding:7px 10px;min-height:34px;transition:background .1s}
-    .cell-normal:hover{background:#e0f2fe}
+    .cell-normal:hover{background:var(--accent-bg)}
     .cell-focus{padding:0;background:var(--surface);box-shadow:inset 0 0 0 2px var(--accent2)}
-    .cell-input{width:100%;padding:7px 10px;border:none;outline:none;background:#fef9c3;font-size:12.5px;font-family:var(--font);box-sizing:border-box;min-height:34px;line-height:1.5;resize:vertical}
+    /* theme-aware: was hardcoded #fef9c3 light yellow → white/inverted in dark mode */
+    .cell-input{width:100%;padding:7px 10px;border:none;outline:none;background:var(--surface);color:var(--text);font-size:12.5px;font-family:var(--font);box-sizing:border-box;min-height:34px;line-height:1.5;resize:vertical}
     .cell-text{display:block;min-height:1.4em}
+    .cell-sel{background:var(--accent-bg) !important;box-shadow:inset 0 0 0 1.5px var(--accent2)}
+    .te-merge-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .te-mbtn{padding:4px 10px;border-radius:var(--radius-sm);font-size:11.5px;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--font);transition:all .12s}
+    .te-mbtn:hover:not(:disabled){background:var(--accent-bg);border-color:var(--accent-border)}
+    .te-mbtn:disabled{opacity:.4;cursor:not-allowed}
+    .te-mbar-sep{width:1px;height:18px;background:var(--border2);margin:0 2px}
     .table-editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;background:var(--accent-bg);border-top:1px solid var(--accent-border)}
     .te-btn{padding:5px 14px;border-radius:var(--radius-sm);font-size:11px;font-weight:500;cursor:pointer;border:1px solid transparent;display:inline-flex;align-items:center;gap:4px;font-family:var(--font);transition:all .15s}
     .te-cancel{background:var(--surface);color:var(--text2);border-color:var(--border)} .te-cancel:hover{background:var(--surface2)}
