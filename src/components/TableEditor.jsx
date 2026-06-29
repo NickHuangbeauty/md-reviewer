@@ -2,7 +2,7 @@
 // Visual editor for markdown/HTML tables (incl. colspan/rowspan) with a context menu.
 import React, { useState, useRef, useEffect } from 'react';
 import { Check } from 'lucide-react';
-import { gridToHtmlTable, gridToMdTable, renderCellMd } from '../lib/table.js';
+import { gridToHtmlTable, gridToMdTable, renderCellMd, mergeCells, splitCell } from '../lib/table.js';
 
 export function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   // Deep clone grid including cellMeta AND _originalFormat
@@ -40,13 +40,69 @@ export function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   const [focusCell, setFocusCell] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [structureChanged, setStructureChanged] = useState(false); // 結構變化（新增/刪除行列）
+  // 多格選取：anchor 為起點，range 為 Shift+點 之後的矩形範圍（含 anchor 與目標）
+  const [selAnchor, setSelAnchor] = useState(null); // [r, c]
+  const [selRange, setSelRange] = useState(null); // { r1, c1, r2, c2 }（已正規化）
   const wrapRef = useRef(null);
   const dataRef = useRef(data);
   const initialGridRef = useRef(cloneGrid(grid)); // 保存原始 grid 用於比較
+  const lastFocusRef = useRef(null); // 記住最後聚焦的格（拆分時用，避免按鈕觸發 blur 後 focusCell 變 null）
   dataRef.current = data;
 
   const hasMeta = data.some(r => r.cellMeta && r.cellMeta.some(m => m && (m.colspan > 1 || m.rowspan > 1)));
   const serialize = (d) => outputFormat === 'html' ? gridToHtmlTable(d) : gridToMdTable(d);
+
+  // 合併儲存格僅 HTML 表格支援（Markdown 無法表示 colspan/rowspan）
+  const isHtml = outputFormat === 'html';
+
+  // 計算選取範圍內的儲存格數量（含被合併覆蓋的格子）
+  const selectedCellCount = selRange
+    ? (selRange.r2 - selRange.r1 + 1) * (selRange.c2 - selRange.c1 + 1)
+    : 0;
+  const canMerge = isHtml && selRange && selectedCellCount >= 2;
+
+  // 判斷某格是否在選取範圍內（用於高亮）
+  const isCellSelected = (ri, ci) => {
+    if (!selRange) return false;
+    return ri >= selRange.r1 && ri <= selRange.r2 && ci >= selRange.c1 && ci <= selRange.c2;
+  };
+
+  // 目前聚焦格是否為可拆分的合併格（用 lastFocusRef 以避免按鈕 blur 後 focusCell 變 null）
+  const splitTarget = focusCell || lastFocusRef.current;
+  const focusMeta = splitTarget ? data[splitTarget[0]]?.cellMeta?.[splitTarget[1]] : null;
+  const canSplit = isHtml && focusMeta && focusMeta.primary && (focusMeta.colspan > 1 || focusMeta.rowspan > 1);
+
+  // 點一格（無 Shift）：設為選取起點 + 聚焦
+  const selectCell = (ri, ci, shiftKey) => {
+    if (shiftKey && selAnchor) {
+      const r1 = Math.min(selAnchor[0], ri), r2 = Math.max(selAnchor[0], ri);
+      const c1 = Math.min(selAnchor[1], ci), c2 = Math.max(selAnchor[1], ci);
+      setSelRange({ r1, c1, r2, c2 });
+    } else {
+      setSelAnchor([ri, ci]);
+      setSelRange(null);
+    }
+  };
+
+  const clearSelection = () => { setSelAnchor(null); setSelRange(null); };
+
+  const doMerge = () => {
+    if (!canMerge) return;
+    const nd = mergeCells(data, selRange.r1, selRange.c1, selRange.r2, selRange.c2);
+    setData(nd);
+    setStructureChanged(true);
+    clearSelection();
+    setFocusCell([selRange.r1, selRange.c1]);
+  };
+
+  const doSplit = () => {
+    if (!canSplit || !splitTarget) return;
+    const nd = splitCell(data, splitTarget[0], splitTarget[1]);
+    setData(nd);
+    setStructureChanged(true);
+    clearSelection();
+    lastFocusRef.current = null;
+  };
 
   useEffect(() => {
     const handler = (e) => {
@@ -150,15 +206,29 @@ export function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
 
       const Tag = (meta?.isHeader || row.isHeader) ? 'th' : 'td';
       const isFocused = focusCell && focusCell[0] === ri && focusCell[1] === ci;
+      const isSelected = isCellSelected(ri, ci);
       const spanProps = {};
       if (meta && meta.colspan > 1) spanProps.colSpan = meta.colspan;
       if (meta && meta.rowspan > 1) spanProps.rowSpan = meta.rowspan;
 
+      const cellClass = (isFocused ? 'cell-focus' : 'cell-normal') + (isSelected ? ' cell-selected' : '');
+
       cellElements.push(
         <Tag key={ci}
           {...spanProps}
-          className={isFocused ? 'cell-focus' : 'cell-normal'}
-          onClick={() => setFocusCell([ri, ci])}
+          className={cellClass}
+          onClick={(e) => {
+            // 多格選取（HTML 模式）：Shift+點 = 框選範圍，不進入編輯
+            if (isHtml && e.shiftKey) {
+              e.preventDefault();
+              selectCell(ri, ci, true);
+              return;
+            }
+            // 一般點擊：設選取起點 + 進入編輯
+            if (isHtml) selectCell(ri, ci, false);
+            lastFocusRef.current = [ri, ci];
+            setFocusCell([ri, ci]);
+          }}
           onContextMenu={e => handleCtxMenu(e, ri, ci)}>
           {isFocused ? (
             <textarea value={cell}
@@ -235,7 +305,31 @@ export function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
         </table>
       </div>
       <div className="table-editor-actions">
-        <span className="te-hint">右鍵 = 行列操作 · Tab 跳格 · 點外面自動存</span>
+        <span className="te-hint">
+          {isHtml
+            ? '右鍵 = 行列操作 · 點一格再 Shift+點另一格 = 框選 · Tab 跳格 · 點外面自動存'
+            : '右鍵 = 行列操作 · Tab 跳格 · 點外面自動存'}
+        </span>
+        <button
+          onMouseDown={e => e.preventDefault()}
+          onClick={doMerge}
+          disabled={!canMerge}
+          className="te-btn te-merge"
+          title={isHtml
+            ? (canMerge ? '合併選取的儲存格' : '先點一格，再 Shift+點另一格選取至少兩格')
+            : 'Markdown 表格不支援合併儲存格'}>
+          合併儲存格
+        </button>
+        <button
+          onMouseDown={e => e.preventDefault()}
+          onClick={doSplit}
+          disabled={!canSplit}
+          className="te-btn te-split"
+          title={isHtml
+            ? (canSplit ? '拆分目前的合併儲存格' : '請先點選一個已合併的儲存格')
+            : 'Markdown 表格不支援拆分儲存格'}>
+          拆分儲存格
+        </button>
         <button onClick={onCancel} className="te-btn te-cancel">取消</button>
         <button onClick={() => onSave(serialize(data))} className="te-btn te-save">
           <Check style={{ width: 12, height: 12 }} /> 儲存
