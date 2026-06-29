@@ -16,9 +16,12 @@
     "test:featureflags": "node --import ./tests/_register-loader.mjs tests/featureflags.test.mjs",
     "test:embedapi": "node --import ./tests/_register-loader.mjs tests/embedapi.test.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:featureflags && npm run test:embedapi && npm run test:smoke"
+    "test:mcp": "node tests/mcp.test.mjs",
+    "mcp": "node mcp/server.js",
+    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:featureflags && npm run test:embedapi && npm run test:smoke && npm run test:mcp"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "diff": "^5.2.0",
     "dompurify": "^3.4.11",
     "katex": "^0.16.38",

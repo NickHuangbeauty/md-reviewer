@@ -152,6 +152,33 @@ export default function MdReviewer() {
     if (params.get('mode') === 'embed' || params.get('mode') === 'readonly') setEmbedMode(true);
   }, []);
 
+  // === MCP open_review：URL hash 載入器（#review=<base64(JSON)>）===
+  // 由 MCP server 的 open_review 工具產生的連結，掛載時自動解碼並載入檔案，
+  // 供人工在視覺檢閱器核對 / 編修。容錯處理，解析失敗不影響其他邏輯。
+  useEffect(() => {
+    try {
+      const hash = window.location.hash || '';
+      const m = hash.match(/[#&]review=([^&]+)/);
+      if (!m) return;
+      const b64 = decodeURIComponent(m[1]);
+      // base64 解碼後可能含 UTF-8 位元組，需還原成原字串再 JSON.parse
+      const bytes = atob(b64);
+      let json;
+      try {
+        json = decodeURIComponent(escape(bytes));
+      } catch {
+        json = bytes;
+      }
+      const data = JSON.parse(json);
+      const incoming = Array.isArray(data) ? data : data.files;
+      if (Array.isArray(incoming) && incoming.length > 0) {
+        importFiles(incoming);
+      }
+    } catch (err) {
+      console.warn('[md-reviewer] #review hash 載入失敗', err);
+    }
+  }, [importFiles]);
+
   // === Embed API: postMessage listener for cross-origin iframe ===
   useEffect(() => {
     if (!flagEmbedApi) return;
