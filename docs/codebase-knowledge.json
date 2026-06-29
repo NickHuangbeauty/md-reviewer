@@ -1,0 +1,2564 @@
+{
+ "_meta": {
+  "source": "codebase-memory-mcp v0.8.1",
+  "project": "md-reviewer",
+  "indexed": "2026-06-29",
+  "nodes": 452,
+  "edges": 724,
+  "functions": 157
+ },
+ "functions": [
+  {
+   "name": "MdReviewer",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 70,
+   "cognitive": 118,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1000,
+   "exported": true
+  },
+  {
+   "name": "highlightCode",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 35,
+   "cognitive": 88,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 91,
+   "exported": true
+  },
+  {
+   "name": "InlineBlock",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 31,
+   "cognitive": 41,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 345,
+   "exported": true
+  },
+  {
+   "name": "pairBySimilarity",
+   "file": "src/diffWorker.js",
+   "complexity": 31,
+   "cognitive": 78,
+   "params": 4,
+   "loop_depth": 2,
+   "lines": 122,
+   "exported": true
+  },
+  {
+   "name": "parseBlocks",
+   "file": "src/diffWorker.js",
+   "complexity": 28,
+   "cognitive": 62,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 170,
+   "exported": true
+  },
+  {
+   "name": "splitMdBlocks",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 27,
+   "cognitive": 60,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 92,
+   "exported": true
+  },
+  {
+   "name": "DiffViewer",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 23,
+   "cognitive": 42,
+   "params": 1,
+   "loop_depth": 2,
+   "lines": 296,
+   "exported": true
+  },
+  {
+   "name": "InlineTableEditor",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 22,
+   "cognitive": 33,
+   "params": 1,
+   "loop_depth": 2,
+   "lines": 252,
+   "exported": true
+  },
+  {
+   "name": "matchBlocks",
+   "file": "src/diffWorker.js",
+   "complexity": 21,
+   "cognitive": 37,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 71,
+   "exported": true
+  },
+  {
+   "name": "formatMarkdown",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 19,
+   "cognitive": 37,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 17,
+   "exported": true
+  },
+  {
+   "name": "computeAndStreamDiff",
+   "file": "src/diffWorker.js",
+   "complexity": 18,
+   "cognitive": 38,
+   "params": 3,
+   "loop_depth": 3,
+   "lines": 106,
+   "exported": true
+  },
+  {
+   "name": "FloatingToc",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 15,
+   "cognitive": 19,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 117,
+   "exported": true
+  },
+  {
+   "name": "validateEdits",
+   "file": "src/canary.js",
+   "complexity": 15,
+   "cognitive": 31,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 71,
+   "exported": true
+  },
+  {
+   "name": "parseBlockToHtml",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 14,
+   "cognitive": 18,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 118,
+   "exported": true
+  },
+  {
+   "name": "MermaidEditor",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 14,
+   "cognitive": 16,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 170,
+   "exported": true
+  },
+  {
+   "name": "parseHtmlTableToGrid",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 13,
+   "cognitive": 32,
+   "params": 1,
+   "loop_depth": 3,
+   "lines": 107,
+   "exported": true
+  },
+  {
+   "name": "legacyComputeAndStreamDiff",
+   "file": "src/diffWorker.js",
+   "complexity": 12,
+   "cognitive": 45,
+   "params": 3,
+   "loop_depth": 2,
+   "lines": 63,
+   "exported": true
+  },
+  {
+   "name": "legacyComputeStatsOnly",
+   "file": "src/diffWorker.js",
+   "complexity": 12,
+   "cognitive": 45,
+   "params": 3,
+   "loop_depth": 2,
+   "lines": 55,
+   "exported": true
+  },
+  {
+   "name": "main",
+   "file": "tests/smoke.mjs",
+   "complexity": 11,
+   "cognitive": 11,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 87,
+   "exported": true
+  },
+  {
+   "name": "AddFileModal",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 11,
+   "cognitive": 17,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 163,
+   "exported": true
+  },
+  {
+   "name": "buildFoldedItems",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 11,
+   "cognitive": 42,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 36,
+   "exported": true
+  },
+  {
+   "name": "initEmbedApi",
+   "file": "src/embedApi.js",
+   "complexity": 11,
+   "cognitive": 24,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 73,
+   "exported": true
+  },
+  {
+   "name": "fM",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 10,
+   "cognitive": 24,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "handleMessage",
+   "file": "src/embedApi.js",
+   "complexity": 10,
+   "cognitive": 23,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 44,
+   "exported": true
+  },
+  {
+   "name": "isEmptyOrWhitespaceWorker",
+   "file": "src/diffWorker.js",
+   "complexity": 10,
+   "cognitive": 12,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 31,
+   "exported": true
+  },
+  {
+   "name": "isEmptyOrWhitespace",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 9,
+   "cognitive": 11,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 29,
+   "exported": true
+  },
+  {
+   "name": "useDashboardStats",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 9,
+   "cognitive": 13,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 79,
+   "exported": true
+  },
+  {
+   "name": "handleDrop",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 9,
+   "cognitive": 22,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 46,
+   "exported": true
+  },
+  {
+   "name": "tokenSetJaccard",
+   "file": "src/diffWorker.js",
+   "complexity": 9,
+   "cognitive": 17,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 27,
+   "exported": true
+  },
+  {
+   "name": "gridToHtmlTable",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 8,
+   "cognitive": 8,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 29,
+   "exported": true
+  },
+  {
+   "name": "renderRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 8,
+   "cognitive": 14,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 51,
+   "exported": true
+  },
+  {
+   "name": "SlashMenu",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 8,
+   "cognitive": 15,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 105,
+   "exported": true
+  },
+  {
+   "name": "extractNodeIdsFromLine",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 8,
+   "cognitive": 9,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 39,
+   "exported": true
+  },
+  {
+   "name": "diffWithinBlock",
+   "file": "src/diffWorker.js",
+   "complexity": 8,
+   "cognitive": 29,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 40,
+   "exported": true
+  },
+  {
+   "name": "computeStatsOnly",
+   "file": "src/diffWorker.js",
+   "complexity": 7,
+   "cognitive": 11,
+   "params": 3,
+   "loop_depth": 2,
+   "lines": 41,
+   "exported": true
+  },
+  {
+   "name": "safeDownload",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 6,
+   "cognitive": 13,
+   "params": 3,
+   "loop_depth": 0,
+   "lines": 71,
+   "exported": true
+  },
+  {
+   "name": "parseMdTableToGrid",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 6,
+   "cognitive": 8,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 38,
+   "exported": true
+  },
+  {
+   "name": "findSvgNodesById",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 6,
+   "cognitive": 8,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 20,
+   "exported": true
+  },
+  {
+   "name": "_drainMmQueue",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 6,
+   "cognitive": 14,
+   "params": 0,
+   "loop_depth": 1,
+   "lines": 21,
+   "exported": true
+  },
+  {
+   "name": "computeLineSimilarity",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 6,
+   "cognitive": 9,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 38,
+   "exported": true
+  },
+  {
+   "name": "computeLineSimilarity",
+   "file": "src/diffWorker.js",
+   "complexity": 6,
+   "cognitive": 9,
+   "params": 2,
+   "loop_depth": 1,
+   "lines": 18,
+   "exported": true
+  },
+  {
+   "name": "validateStats",
+   "file": "src/canary.js",
+   "complexity": 6,
+   "cognitive": 7,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 47,
+   "exported": true
+  },
+  {
+   "name": "parseMarkdownTable",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 5,
+   "cognitive": 7,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 20,
+   "exported": true
+  },
+  {
+   "name": "gridsAreDifferent",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 5,
+   "cognitive": 9,
+   "params": 2,
+   "loop_depth": 2,
+   "lines": 12,
+   "exported": true
+  },
+  {
+   "name": "tokenize",
+   "file": "src/diffWorker.js",
+   "complexity": 5,
+   "cognitive": 12,
+   "params": 1,
+   "loop_depth": 2,
+   "lines": 13,
+   "exported": true
+  },
+  {
+   "name": "test",
+   "file": "tests/smoke.mjs",
+   "complexity": 4,
+   "cognitive": 10,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "fH",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 7,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 2,
+   "exported": true
+  },
+  {
+   "name": "safeDownloadBlob",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 10,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 14,
+   "exported": true
+  },
+  {
+   "name": "gridToMdTable",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 4,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 27,
+   "exported": true
+  },
+  {
+   "name": "FloatingToolbar",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 4,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 54,
+   "exported": true
+  },
+  {
+   "name": "cleanupMermaidDom",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 6,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "handleKeyDown",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 6,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 21,
+   "exported": true
+  },
+  {
+   "name": "parseBatch",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 7,
+   "params": 0,
+   "loop_depth": 1,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "computeDiffStats",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 8,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 44,
+   "exported": true
+  },
+  {
+   "name": "VirtualDiffList",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 5,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 215,
+   "exported": true
+  },
+  {
+   "name": "doImport",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 4,
+   "cognitive": 6,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "validateSetFilesPayload",
+   "file": "src/embedApi.js",
+   "complexity": 4,
+   "cognitive": 6,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 15,
+   "exported": true
+  },
+  {
+   "name": "_scopeStyleBlock",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 3,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 15,
+   "exported": true
+  },
+  {
+   "name": "crc32",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 4,
+   "params": 1,
+   "loop_depth": 2,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "handlePaste",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 5,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "isHidden",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 6,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "normalizeLineForComparison",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 3,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 48,
+   "exported": true
+  },
+  {
+   "name": "renderSplitRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 4,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 22,
+   "exported": true
+  },
+  {
+   "name": "cellClass",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 4,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 8,
+   "exported": true
+  },
+  {
+   "name": "getSeverityInfo",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 3,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "getInitialTheme",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 5,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "confirmDownload",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 3,
+   "cognitive": 4,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "fetchRemoteFlags",
+   "file": "src/featureFlags.js",
+   "complexity": 3,
+   "cognitive": 3,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 16,
+   "exported": true
+  },
+  {
+   "name": "test",
+   "file": "tests/diff-engine.test.mjs",
+   "complexity": 2,
+   "cognitive": 3,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 10,
+   "exported": true
+  },
+  {
+   "name": "flush",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 3,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "parseTableRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "MarkPopup",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 33,
+   "exported": true
+  },
+  {
+   "name": "handler",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 3,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "check",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 20,
+   "exported": true
+  },
+  {
+   "name": "HtmlContentEditable",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 34,
+   "exported": true
+  },
+  {
+   "name": "onThumbMove",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "handlePreviewMouseUp",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "handleShortcut",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 3,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "handleClick",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 10,
+   "exported": true
+  },
+  {
+   "name": "DashboardOverview",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 175,
+   "exported": true
+  },
+  {
+   "name": "wordDiff",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 19,
+   "exported": true
+  },
+  {
+   "name": "getFlag",
+   "file": "src/featureFlags.js",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 5,
+   "exported": true
+  },
+  {
+   "name": "normalizeTextForDiff",
+   "file": "src/diffWorker.js",
+   "complexity": 2,
+   "cognitive": 2,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 34,
+   "exported": true
+  },
+  {
+   "name": "computeStatsFromEdits",
+   "file": "src/diffWorker.js",
+   "complexity": 2,
+   "cognitive": 3,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 23,
+   "exported": true
+  },
+  {
+   "name": "log",
+   "file": "tests/smoke.mjs",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "assert",
+   "file": "tests/diff-engine.test.mjs",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "injectMarksToMd",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "fn",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "renderCellMd",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 12,
+   "exported": true
+  },
+  {
+   "name": "cloneGrid",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 12,
+   "exported": true
+  },
+  {
+   "name": "addRowBelow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "addRowAbove",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "deleteRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "addColRight",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 13,
+   "exported": true
+  },
+  {
+   "name": "addColLeft",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 13,
+   "exported": true
+  },
+  {
+   "name": "deleteCol",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 10,
+   "exported": true
+  },
+  {
+   "name": "TableCtxMenu",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 43,
+   "exported": true
+  },
+  {
+   "name": "BlockHandleMenu",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 40,
+   "exported": true
+  },
+  {
+   "name": "handleBlur",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "update",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 20,
+   "exported": true
+  },
+  {
+   "name": "onThumbUp",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "onTrackDown",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "wrapSelection",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "handleSlashSelect",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 9,
+   "exported": true
+  },
+  {
+   "name": "handlePreviewMouseDown",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "submitSingle",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "submitBatch",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "extractTocEntries",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 19,
+   "exported": true
+  },
+  {
+   "name": "hasChildren",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "toggleCollapse",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "simpleHash",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 1,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "SourceEditor",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 29,
+   "exported": true
+  },
+  {
+   "name": "triggerDiff",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 14,
+   "exported": true
+  },
+  {
+   "name": "setTheme",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "doFormat",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "downloadZip",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 5,
+   "exported": true
+  },
+  {
+   "name": "getAllFlags",
+   "file": "src/featureFlags.js",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 1,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "isOriginAllowed",
+   "file": "src/embedApi.js",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "sendToHost",
+   "file": "src/embedApi.js",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 3,
+   "loop_depth": 0,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "flush",
+   "file": "src/diffWorker.js",
+   "complexity": 1,
+   "cognitive": 1,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 12,
+   "exported": true
+  },
+  {
+   "name": "screenshotOnFail",
+   "file": "tests/smoke.mjs",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "postMessage",
+   "file": "tests/diff-engine.test.mjs",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "joinMdBlocks",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "escapePipe",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "inlineMd",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  },
+  {
+   "name": "esc",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "createZip",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 22,
+   "exported": true
+  },
+  {
+   "name": "normalizeCell",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "serialize",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "updateCell",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 3,
+   "loop_depth": 0,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "clearCell",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "handleCtxMenu",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 3,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "extractMermaidCode",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "enqueueMermaidRender",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "onThumbDown",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 8,
+   "exported": true
+  },
+  {
+   "name": "handleGrip",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "DownloadConfirmModal",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 30,
+   "exported": true
+  },
+  {
+   "name": "updateHeight",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "handleScroll",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "renderUnifiedRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 8,
+   "exported": true
+  },
+  {
+   "name": "renderFoldRow",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 12,
+   "exported": true
+  },
+  {
+   "name": "uid",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "loadFiles",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "getState",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "onGetState",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "stripPrefix",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "doExport",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "handleDragOver",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "downloadFile",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "onMove",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 4,
+   "exported": true
+  },
+  {
+   "name": "onUp",
+   "file": "src/MdReviewer.jsx",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 7,
+   "exported": true
+  },
+  {
+   "name": "notifyListeners",
+   "file": "src/featureFlags.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "useFeatureFlag",
+   "file": "src/featureFlags.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 11,
+   "exported": true
+  },
+  {
+   "name": "listener",
+   "file": "src/featureFlags.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 0,
+   "loop_depth": 0,
+   "lines": 1,
+   "exported": true
+  },
+  {
+   "name": "splitLines",
+   "file": "src/diffWorker.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 3,
+   "exported": true
+  },
+  {
+   "name": "computeFingerprint",
+   "file": "src/diffWorker.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 1,
+   "loop_depth": 0,
+   "lines": 8,
+   "exported": true
+  },
+  {
+   "name": "mergeReports",
+   "file": "src/canary.js",
+   "complexity": 0,
+   "cognitive": 0,
+   "params": 2,
+   "loop_depth": 0,
+   "lines": 6,
+   "exported": true
+  }
+ ],
+ "calls": [
+  {
+   "from": "AddFileModal",
+   "to": "parseBatch",
+   "confidence": "0.95"
+  },
+  {
+   "from": "DashboardOverview",
+   "to": "getSeverityInfo",
+   "confidence": "0.95"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "useFeatureFlag",
+   "confidence": "0.75"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "getAllFlags",
+   "confidence": "0.95"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "computeDiffStats",
+   "confidence": "0.95"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "buildFoldedItems",
+   "confidence": "0.95"
+  },
+  {
+   "from": "DiffViewer",
+   "to": "VirtualDiffList",
+   "confidence": "0.95"
+  },
+  {
+   "from": "FloatingToc",
+   "to": "isHidden",
+   "confidence": "0.95"
+  },
+  {
+   "from": "FloatingToc",
+   "to": "hasChildren",
+   "confidence": "0.95"
+  },
+  {
+   "from": "FloatingToc",
+   "to": "toggleCollapse",
+   "confidence": "0.95"
+  },
+  {
+   "from": "FloatingToc",
+   "to": "handleClick",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "parseMdTableToGrid",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "parseHtmlTableToGrid",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "extractMermaidCode",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "enqueueMermaidRender",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "cleanupMermaidDom",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "fn",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "InlineTableEditor",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "MermaidEditor",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "HtmlContentEditable",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "FloatingToolbar",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "SlashMenu",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineBlock",
+   "to": "BlockHandleMenu",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "cloneGrid",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "addColLeft",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "deleteCol",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "addColRight",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "handleCtxMenu",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "addRowAbove",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "deleteRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "renderRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "addRowBelow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "serialize",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "TableCtxMenu",
+   "confidence": "0.95"
+  },
+  {
+   "from": "InlineTableEditor",
+   "to": "clearCell",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "useFeatureFlag",
+   "confidence": "0.75"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "fetchRemoteFlags",
+   "confidence": "0.75"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "uid",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "setTheme",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "initEmbedApi",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "useDashboardStats",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "splitMdBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "parseBlockToHtml",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "extractTocEntries",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "joinMdBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "stripPrefix",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "downloadFile",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "DashboardOverview",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "SourceEditor",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "DiffViewer",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "InlineBlock",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "FloatingToc",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "MarkPopup",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "AddFileModal",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MdReviewer",
+   "to": "confirmDownload",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MermaidEditor",
+   "to": "enqueueMermaidRender",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MermaidEditor",
+   "to": "extractNodeIdsFromLine",
+   "confidence": "0.95"
+  },
+  {
+   "from": "MermaidEditor",
+   "to": "findSvgNodesById",
+   "confidence": "0.95"
+  },
+  {
+   "from": "VirtualDiffList",
+   "to": "updateHeight",
+   "confidence": "0.95"
+  },
+  {
+   "from": "VirtualDiffList",
+   "to": "renderFoldRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "VirtualDiffList",
+   "to": "renderUnifiedRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "VirtualDiffList",
+   "to": "renderSplitRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "_drainMmQueue",
+   "to": "cleanupMermaidDom",
+   "confidence": "0.95"
+  },
+  {
+   "from": "_scopeStyleBlock",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "addRowAbove",
+   "to": "cloneGrid",
+   "confidence": "0.90"
+  },
+  {
+   "from": "addRowBelow",
+   "to": "cloneGrid",
+   "confidence": "0.90"
+  },
+  {
+   "from": "clearCell",
+   "to": "updateCell",
+   "confidence": "0.90"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "normalizeTextForDiff",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "parseBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "matchBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "flush",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "diffWithinBlock",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "validateEdits",
+   "confidence": "0.55"
+  },
+  {
+   "from": "computeAndStreamDiff",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "computeDiffStats",
+   "to": "isEmptyOrWhitespace",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeLineSimilarity",
+   "to": "normalizeLineForComparison",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsFromEdits",
+   "to": "isEmptyOrWhitespaceWorker",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "normalizeTextForDiff",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "parseBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "matchBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "diffWithinBlock",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "computeStatsFromEdits",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "mergeReports",
+   "confidence": "0.95"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "validateEdits",
+   "confidence": "0.55"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "validateStats",
+   "confidence": "0.55"
+  },
+  {
+   "from": "computeStatsOnly",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "confirmDownload",
+   "to": "safeDownload",
+   "confidence": "0.90"
+  },
+  {
+   "from": "confirmDownload",
+   "to": "injectMarksToMd",
+   "confidence": "0.90"
+  },
+  {
+   "from": "createZip",
+   "to": "crc32",
+   "confidence": "0.95"
+  },
+  {
+   "from": "diffWithinBlock",
+   "to": "splitLines",
+   "confidence": "0.95"
+  },
+  {
+   "from": "diffWithinBlock",
+   "to": "pairBySimilarity",
+   "confidence": "0.95"
+  },
+  {
+   "from": "doExport",
+   "to": "safeDownload",
+   "confidence": "0.90"
+  },
+  {
+   "from": "doFormat",
+   "to": "formatMarkdown",
+   "confidence": "0.90"
+  },
+  {
+   "from": "downloadZip",
+   "to": "safeDownloadBlob",
+   "confidence": "0.90"
+  },
+  {
+   "from": "downloadZip",
+   "to": "createZip",
+   "confidence": "0.90"
+  },
+  {
+   "from": "downloadZip",
+   "to": "injectMarksToMd",
+   "confidence": "0.90"
+  },
+  {
+   "from": "enqueueMermaidRender",
+   "to": "_drainMmQueue",
+   "confidence": "0.95"
+  },
+  {
+   "from": "extractNodeIdsFromLine",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "fH",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "fM",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "fetchRemoteFlags",
+   "to": "notifyListeners",
+   "confidence": "0.95"
+  },
+  {
+   "from": "findSvgNodesById",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "flush",
+   "to": "computeFingerprint",
+   "confidence": "0.90"
+  },
+  {
+   "from": "flush",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "formatMarkdown",
+   "to": "fH",
+   "confidence": "0.95"
+  },
+  {
+   "from": "formatMarkdown",
+   "to": "fM",
+   "confidence": "0.95"
+  },
+  {
+   "from": "getAllFlags",
+   "to": "getFlag",
+   "confidence": "0.95"
+  },
+  {
+   "from": "gridToHtmlTable",
+   "to": "esc",
+   "confidence": "0.95"
+  },
+  {
+   "from": "gridToMdTable",
+   "to": "escapePipe",
+   "confidence": "0.95"
+  },
+  {
+   "from": "gridsAreDifferent",
+   "to": "normalizeCell",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handleMessage",
+   "to": "isOriginAllowed",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handleMessage",
+   "to": "sendToHost",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handleMessage",
+   "to": "validateSetFilesPayload",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handleMessage",
+   "to": "onGetState",
+   "confidence": "0.75"
+  },
+  {
+   "from": "handleShortcut",
+   "to": "submitSingle",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handleShortcut",
+   "to": "submitBatch",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handler",
+   "to": "gridsAreDifferent",
+   "confidence": "0.90"
+  },
+  {
+   "from": "handler",
+   "to": "serialize",
+   "confidence": "0.90"
+  },
+  {
+   "from": "highlightCode",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "highlightCode",
+   "to": "esc",
+   "confidence": "0.95"
+  },
+  {
+   "from": "initEmbedApi",
+   "to": "sendToHost",
+   "confidence": "0.95"
+  },
+  {
+   "from": "injectMarksToMd",
+   "to": "splitMdBlocks",
+   "confidence": "0.95"
+  },
+  {
+   "from": "isEmptyOrWhitespace",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "isEmptyOrWhitespaceWorker",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "legacyComputeAndStreamDiff",
+   "to": "normalizeTextForDiff",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeAndStreamDiff",
+   "to": "splitLines",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeAndStreamDiff",
+   "to": "computeLineSimilarity",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeAndStreamDiff",
+   "to": "validateEdits",
+   "confidence": "0.55"
+  },
+  {
+   "from": "legacyComputeAndStreamDiff",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "normalizeTextForDiff",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "splitLines",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "computeStatsFromEdits",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "mergeReports",
+   "confidence": "0.95"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "validateEdits",
+   "confidence": "0.55"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "validateStats",
+   "confidence": "0.55"
+  },
+  {
+   "from": "legacyComputeStatsOnly",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "main",
+   "to": "log",
+   "confidence": "0.90"
+  },
+  {
+   "from": "main",
+   "to": "on",
+   "confidence": "0.55"
+  },
+  {
+   "from": "main",
+   "to": "test",
+   "confidence": "0.95"
+  },
+  {
+   "from": "main",
+   "to": "status",
+   "confidence": "0.10"
+  },
+  {
+   "from": "matchBlocks",
+   "to": "tokenSetJaccard",
+   "confidence": "0.95"
+  },
+  {
+   "from": "normalizeLineForComparison",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "notifyListeners",
+   "to": "fn",
+   "confidence": "0.75"
+  },
+  {
+   "from": "pairBySimilarity",
+   "to": "computeLineSimilarity",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlockToHtml",
+   "to": "esc",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlockToHtml",
+   "to": "highlightCode",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlockToHtml",
+   "to": "parseMarkdownTable",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlockToHtml",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "parseBlockToHtml",
+   "to": "_scopeStyleBlock",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlocks",
+   "to": "flush",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseBlocks",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "parseMarkdownTable",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "parseMarkdownTable",
+   "to": "parseTableRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseMarkdownTable",
+   "to": "inlineMd",
+   "confidence": "0.95"
+  },
+  {
+   "from": "parseMdTableToGrid",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "parseMdTableToGrid",
+   "to": "parseTableRow",
+   "confidence": "0.95"
+  },
+  {
+   "from": "renderRow",
+   "to": "handleCtxMenu",
+   "confidence": "0.90"
+  },
+  {
+   "from": "renderRow",
+   "to": "updateCell",
+   "confidence": "0.90"
+  },
+  {
+   "from": "renderRow",
+   "to": "serialize",
+   "confidence": "0.90"
+  },
+  {
+   "from": "renderRow",
+   "to": "renderCellMd",
+   "confidence": "0.90"
+  },
+  {
+   "from": "renderSplitRow",
+   "to": "cellClass",
+   "confidence": "0.90"
+  },
+  {
+   "from": "safeDownload",
+   "to": "log",
+   "confidence": "0.75"
+  },
+  {
+   "from": "sendToHost",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "serialize",
+   "to": "gridToHtmlTable",
+   "confidence": "0.90"
+  },
+  {
+   "from": "serialize",
+   "to": "gridToMdTable",
+   "confidence": "0.90"
+  },
+  {
+   "from": "splitMdBlocks",
+   "to": "flush",
+   "confidence": "0.95"
+  },
+  {
+   "from": "splitMdBlocks",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "src/diffWorker.js",
+   "to": "computeStatsOnly",
+   "confidence": "0.90"
+  },
+  {
+   "from": "src/diffWorker.js",
+   "to": "legacyComputeStatsOnly",
+   "confidence": "0.90"
+  },
+  {
+   "from": "src/diffWorker.js",
+   "to": "computeAndStreamDiff",
+   "confidence": "0.90"
+  },
+  {
+   "from": "src/diffWorker.js",
+   "to": "legacyComputeAndStreamDiff",
+   "confidence": "0.90"
+  },
+  {
+   "from": "src/diffWorker.js",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "src/main.jsx",
+   "to": "MdReviewer",
+   "confidence": "0.75"
+  },
+  {
+   "from": "test",
+   "to": "fn",
+   "confidence": "0.75"
+  },
+  {
+   "from": "test",
+   "to": "log",
+   "confidence": "0.95"
+  },
+  {
+   "from": "test",
+   "to": "screenshotOnFail",
+   "confidence": "0.95"
+  },
+  {
+   "from": "test",
+   "to": "fn",
+   "confidence": "0.75"
+  },
+  {
+   "from": "test",
+   "to": "log",
+   "confidence": "0.75"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "log",
+   "confidence": "0.75"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "test",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "validateEdits",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "assert",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "validateStats",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tests/diff-engine.test.mjs",
+   "to": "mergeReports",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tests/smoke.mjs",
+   "to": "main",
+   "confidence": "0.90"
+  },
+  {
+   "from": "tokenSetJaccard",
+   "to": "tokenize",
+   "confidence": "0.95"
+  },
+  {
+   "from": "tokenize",
+   "to": "test",
+   "confidence": "0.55"
+  },
+  {
+   "from": "triggerDiff",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "triggerDiff",
+   "to": "getAllFlags",
+   "confidence": "0.75"
+  },
+  {
+   "from": "useDashboardStats",
+   "to": "postMessage",
+   "confidence": "0.75"
+  },
+  {
+   "from": "useDashboardStats",
+   "to": "getAllFlags",
+   "confidence": "0.95"
+  },
+  {
+   "from": "useDashboardStats",
+   "to": "simpleHash",
+   "confidence": "0.95"
+  },
+  {
+   "from": "useFeatureFlag",
+   "to": "getFlag",
+   "confidence": "0.95"
+  },
+  {
+   "from": "wordDiff",
+   "to": "esc",
+   "confidence": "0.90"
+  }
+ ]
+}
