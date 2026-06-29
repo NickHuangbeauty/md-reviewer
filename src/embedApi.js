@@ -28,6 +28,25 @@ function isOriginAllowed(origin) {
   return ALLOWED_ORIGINS.has(origin);
 }
 
+// ===== Resolved Host Origin =====
+// 一旦收到通過來源檢查且來自 HOST_SOURCE 的入站訊息，便記錄該 host origin，
+// 之後所有出站 postMessage 都精確回傳到此 origin（不再使用 '*'）。
+let resolvedHostOrigin = null;
+
+/**
+ * 解析出站 postMessage 應使用的 targetOrigin。
+ * 優先序：已驗證的 host origin > 白名單第一個 > '*'（僅 dev/POC 無白名單時的退路）。
+ */
+function resolveTargetOrigin() {
+  if (resolvedHostOrigin) return resolvedHostOrigin;
+  if (ALLOWED_ORIGINS && ALLOWED_ORIGINS.size > 0) {
+    return ALLOWED_ORIGINS.values().next().value;
+  }
+  // 尚未收到任何入站訊息（例如最初的 ready 訊號）且無白名單：dev/POC 才退回 '*'。
+  console.warn('[EmbedAPI] targetOrigin 退回 "*"（尚無已驗證 host origin 且未設定 VITE_ALLOWED_ORIGINS）');
+  return '*';
+}
+
 // ===== Schema Validation =====
 
 function validateSetFilesPayload(payload) {
@@ -59,14 +78,15 @@ function validateSetFilesPayload(payload) {
 export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
   function sendToHost(type, requestId, payload) {
     if (!window.parent || window.parent === window) return;
-    // TODO: v1 must replace '*' with specific allowed origin. Do NOT ship '*' to production.
+    // targetOrigin 由 resolveTargetOrigin() 決定：優先用已驗證的 host origin，
+    // 其次白名單第一個，最後（dev/POC 無白名單）才退回 '*'。避免向任意來源洩漏資料。
     window.parent.postMessage({
       source: SOURCE_ID,
       type,
       requestId: requestId || null,
       instanceId: instanceId || null,
       payload,
-    }, '*');
+    }, resolveTargetOrigin());
   }
 
   function handleMessage(event) {
@@ -78,6 +98,10 @@ export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
 
     const msg = event.data;
     if (!msg || typeof msg !== 'object' || msg.source !== HOST_SOURCE) return;
+
+    // 已通過來源檢查（isOriginAllowed）且確認來自 host：記錄此 origin，
+    // 後續出站訊息便能精確回傳，不再使用 '*'。
+    resolvedHostOrigin = event.origin;
 
     switch (msg.type) {
       case 'setFiles': {

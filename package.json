@@ -10,13 +10,24 @@
     "build:canary": "vite build --config vite.config.canary.js",
     "deploy": "npm run build && gh-pages -d dist",
     "test:engine": "node tests/diff-engine.test.mjs",
+    "test:table": "node tests/table.test.mjs",
+    "test:markdown": "node tests/markdown.test.mjs",
+    "test:diffstats": "node tests/diffstats.test.mjs",
+    "test:diffcore": "node tests/diffcore.test.mjs",
+    "test:featureflags": "node --import ./tests/_register-loader.mjs tests/featureflags.test.mjs",
+    "test:embedapi": "node --import ./tests/_register-loader.mjs tests/embedapi.test.mjs",
+    "test:mcp": "node tests/mcp.test.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "test:all": "npm run test:engine && npm run test:smoke"
+    "mcp": "node mcp/server.js",
+    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:diffcore && npm run test:featureflags && npm run test:embedapi && npm run test:mcp"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "diff": "^5.2.0",
+    "dompurify": "^3.4.11",
     "katex": "^0.16.38",
     "lucide-react": "^0.263.1",
+    "mermaid": "^10.9.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

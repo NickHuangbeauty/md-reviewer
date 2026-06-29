@@ -39,6 +39,9 @@ vite.config.js.timestamp-*.mjs
 .cache/
 .parcel-cache/
 
+# Claude Code local agent worktrees / scratch (transient, never commit)
+.claude/worktrees/
+
 # Testing
 coverage/
 test_sample.md
