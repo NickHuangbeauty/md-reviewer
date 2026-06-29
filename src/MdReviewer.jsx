@@ -3407,7 +3407,7 @@ export default function MdReviewer() {
 
   // Mermaid config — adapt theme to app theme
   const mmConfig = useMemo(() => {
-    const shared = { startOnLoad: false, suppressErrorRendering: true, flowchart: { curve: 'basis', padding: 12 }, sequence: { actorMargin: 30, mirrorActors: false } };
+    const shared = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, flowchart: { curve: 'basis', padding: 12 }, sequence: { actorMargin: 30, mirrorActors: false } };
     const font = { fontFamily: '"Noto Sans TC", system-ui, sans-serif', fontSize: '13px' };
     if (theme === 'dark') return { ...shared, theme: 'dark', themeVariables: { ...font, primaryColor: '#374151', primaryTextColor: '#e5e7eb', primaryBorderColor: '#60a5fa', lineColor: '#9ca3af', secondaryColor: '#1f2937', tertiaryColor: '#4b5563' } };
     return { ...shared, theme: 'neutral', themeVariables: { ...font, primaryColor: '#dbeafe', primaryTextColor: '#1e3a5f', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f0fdf4', tertiaryColor: '#fef3c7' } };
@@ -3424,6 +3424,11 @@ export default function MdReviewer() {
     let timer = null;
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js';
+    // Subresource Integrity — a tampered/MitM'd CDN response fails the hash check
+    // and is rejected (fires onerror → graceful source fallback), instead of
+    // executing attacker JS in our origin.
+    script.integrity = 'sha512-6a80OTZVmEJhqYJUmYd5z8yHUCDlYnj6q9XwB/gKOEyNQV/Q8u+XeSG59a2ZKFEHGTYzgfOQKYEBtrZV7vBr+Q==';
+    script.crossOrigin = 'anonymous';
     script.onload = () => {
       if (timer) clearTimeout(timer);
       window.mermaid.initialize(mmConfig);

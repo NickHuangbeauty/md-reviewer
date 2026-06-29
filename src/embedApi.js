@@ -19,13 +19,17 @@ const ERR = {
 
 const ALLOWED_ORIGINS = (() => {
   const raw = import.meta.env.VITE_ALLOWED_ORIGINS || '';
-  if (!raw) return null; // null = accept all origins (POC/dev mode)
+  if (!raw) return null; // unset
   return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
 })();
+const IS_DEV = !!import.meta.env.DEV;
 
+// Fail closed in production: with no configured allowlist, reject cross-origin
+// messages (a build that wants the embed API MUST set VITE_ALLOWED_ORIGINS).
+// In the dev server we accept all for local POC convenience.
 function isOriginAllowed(origin) {
-  if (!ALLOWED_ORIGINS) return true; // dev mode: accept all
-  return ALLOWED_ORIGINS.has(origin);
+  if (ALLOWED_ORIGINS) return ALLOWED_ORIGINS.has(origin);
+  return IS_DEV;
 }
 
 // ===== Schema Validation =====
@@ -57,24 +61,32 @@ function validateSetFilesPayload(payload) {
  * @returns {Function} cleanup - call to remove listener
  */
 export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
-  function sendToHost(type, requestId, payload) {
+  // Post to the parent frame, always targeting a SPECIFIC origin (never '*').
+  // Responses go back to the exact origin that messaged us; proactive messages
+  // (ready) go only to configured allowed origins.
+  function postToHost(type, requestId, payload, targetOrigin) {
     if (!window.parent || window.parent === window) return;
-    // TODO: v1 must replace '*' with specific allowed origin. Do NOT ship '*' to production.
+    if (!targetOrigin || targetOrigin === '*') {
+      if (!IS_DEV) return; // never broadcast document content to '*' in production
+      targetOrigin = '*';
+    }
     window.parent.postMessage({
       source: SOURCE_ID,
       type,
       requestId: requestId || null,
       instanceId: instanceId || null,
       payload,
-    }, '*');
+    }, targetOrigin);
   }
 
   function handleMessage(event) {
-    // Origin guard
+    // Origin guard — fail closed in production when no allowlist is configured.
     if (!isOriginAllowed(event.origin)) {
       console.warn('[EmbedAPI] Blocked origin:', event.origin);
       return;
     }
+    // Reply only to the (allowed) origin that sent this message.
+    const reply = (type, requestId, payload) => postToHost(type, requestId, payload, event.origin);
 
     const msg = event.data;
     if (!msg || typeof msg !== 'object' || msg.source !== HOST_SOURCE) return;
@@ -85,7 +97,7 @@ export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
         try {
           const size = JSON.stringify(msg.payload).length * 2; // conservative UTF-16 estimate
           if (size > MAX_PAYLOAD_BYTES) {
-            sendToHost('error', msg.requestId, {
+            reply('error', msg.requestId, {
               code: ERR.PAYLOAD_TOO_LARGE,
               message: `Payload ~${(size / 1024 / 1024).toFixed(1)}MB exceeds 5MB limit`,
             });
@@ -94,20 +106,20 @@ export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
         } catch { return; }
         const err = validateSetFilesPayload(msg.payload);
         if (err) {
-          sendToHost('error', msg.requestId, { code: ERR.INVALID_SCHEMA, message: err });
+          reply('error', msg.requestId, { code: ERR.INVALID_SCHEMA, message: err });
           return;
         }
         onSetFiles(msg.payload.files);
-        sendToHost('ack', msg.requestId, { type: 'setFiles', count: msg.payload.files.length });
+        reply('ack', msg.requestId, { type: 'setFiles', count: msg.payload.files.length });
         break;
       }
       case 'getState': {
         const state = onGetState();
-        sendToHost('stateResponse', msg.requestId, state);
+        reply('stateResponse', msg.requestId, state);
         break;
       }
       default:
-        sendToHost('error', msg.requestId, {
+        reply('error', msg.requestId, {
           code: ERR.UNKNOWN_TYPE,
           message: `Unknown message type: ${msg.type}`,
         });
@@ -116,12 +128,17 @@ export function initEmbedApi({ instanceId, onSetFiles, onGetState }) {
 
   window.addEventListener('message', handleMessage);
 
-  // Send ready signal (after microtask to let React render)
+  // Send ready signal (after microtask to let React render). This is proactive
+  // (no triggering message), so target each configured allowed origin explicitly;
+  // in dev with no allowlist, fall back to '*'. In production with no allowlist we
+  // stay silent — the host can poll via getState, which we answer to its origin.
   Promise.resolve().then(() => {
-    sendToHost('ready', null, {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: ['setFiles', 'getState'],
-    });
+    const readyPayload = { protocolVersion: PROTOCOL_VERSION, capabilities: ['setFiles', 'getState'] };
+    if (ALLOWED_ORIGINS) {
+      for (const origin of ALLOWED_ORIGINS) postToHost('ready', null, readyPayload, origin);
+    } else if (IS_DEV) {
+      postToHost('ready', null, readyPayload, '*');
+    }
   });
 
   // Return cleanup function
