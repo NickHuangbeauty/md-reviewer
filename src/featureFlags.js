@@ -25,10 +25,14 @@ const FLAG_DEFAULTS = {
 const IS_CANARY = !!import.meta.env.VITE_CANARY;
 
 // ===== Remote Flag Source =====
-// Set this to your GitHub Gist raw URL to enable remote flag control.
-// Example: 'https://gist.githubusercontent.com/<user>/<gist-id>/raw/md-reviewer-flags.json'
+// 遠端旗標來源 URL，可由環境變數 VITE_REMOTE_FLAGS_URL 覆寫：
+//   - 未設定環境變數時，沿用下方預設 Gist（行為相容）。
+//   - 設定為其他 Gist/JSON raw URL 可改用自訂來源。
+//   - 設定為空字串（VITE_REMOTE_FLAGS_URL=''）即可停用遠端旗標。
 // JSON format: { "new-diff-engine": true, "dark-mode": true, "dashboard": false }
-const REMOTE_FLAGS_URL = 'https://gist.githubusercontent.com/NickHuangbeauty/6967bfb280d66b769dc41d4c9a5f81c5/raw/md-reviewer-flags.json';
+// 注意：fetchRemoteFlags 內已有 `if (!REMOTE_FLAGS_URL) return;` 防呆。
+const REMOTE_FLAGS_URL = import.meta.env.VITE_REMOTE_FLAGS_URL
+  ?? 'https://gist.githubusercontent.com/NickHuangbeauty/6967bfb280d66b769dc41d4c9a5f81c5/raw/md-reviewer-flags.json';
 
 // ===== Internal State =====
 let _remoteFlags = null;
