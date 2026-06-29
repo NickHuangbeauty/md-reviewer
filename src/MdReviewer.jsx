@@ -15,6 +15,7 @@ function splitMdBlocks(text) {
   let inMdTable = false;
   let inCodeFence = false;
   let inHtmlDiv = false;
+  let inMathFence = false;
 
   const flush = () => {
     if (buf.length) {
@@ -38,6 +39,21 @@ function splitMdBlocks(text) {
       continue;
     }
     if (inCodeFence) { buf.push(l); continue; }
+
+    // Display math fence $$ ... $$ — keep the whole block (incl. blank lines)
+    // together so KaTeX can pair the delimiters. Without this, a blank line or
+    // the per-line split scatters $$ across separate <p> blocks and it never renders.
+    if (t.startsWith('$$')) {
+      if (!inMathFence) {
+        const rest = t.slice(2).trim();
+        // Self-contained single-line block: "$$ ... $$"
+        if (rest.endsWith('$$') && rest.length >= 2) { flush(); buf.push(l); flush(); continue; }
+        flush(); inMathFence = true; buf.push(l); continue;
+      } else {
+        buf.push(l); inMathFence = false; flush(); continue;
+      }
+    }
+    if (inMathFence) { buf.push(l); continue; }
 
     // HTML table (track nesting depth)
     if (!inHtmlTable && /<table/i.test(t)) {
@@ -252,6 +268,16 @@ function _scopeStyleBlock(styleHtml, scopeSelector) {
 function parseBlockToHtml(text) {
   if (!text) return '';
 
+  // Display math block: $$ ... $$  (possibly multi-line). Emit as ONE element with
+  // the delimiters kept in a single contiguous text node so KaTeX auto-render pairs
+  // them and renders display math at full size. Escape HTML-special chars (e.g. a < b
+  // in a matrix) — the browser decodes them back in textContent, which KaTeX reads.
+  const mathMatch = text.match(/^\$\$([\s\S]*?)\$\$\s*$/);
+  if (mathMatch && mathMatch[1].trim()) {
+    const inner = mathMatch[1].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<div class="katex-display-block">$$' + inner + '$$</div>';
+  }
+
   // Code fence block
   const codeFenceMatch = text.match(/^```(\w*)\n([\s\S]*?)\n```$/);
   if (codeFenceMatch) {
@@ -389,43 +415,30 @@ function formatMarkdown(text) {
 
 /* ===== SAFE DOWNLOAD (FileSaver pattern) ===== */
 function safeDownload(content, filename, mimeType) {
-  console.log('=== safeDownload called ===');
-  console.log('Original filename:', filename);
-  console.log('MimeType:', mimeType);
-  console.log('Content length:', content?.length);
-  
   // Ensure filename has .md extension
   if (!filename.endsWith('.md')) {
     filename = filename + '.md';
   }
-  console.log('Final filename:', filename);
-  
+
   try {
     const blob = new Blob([content], { type: mimeType });
-    console.log('Blob created, size:', blob.size);
-    
+
     // For IE/Edge (legacy)
     if (typeof navigator !== 'undefined' && navigator.msSaveBlob) {
-      console.log('Using msSaveBlob (IE/Edge)');
       navigator.msSaveBlob(blob, filename);
       return;
     }
-    
+
     // Modern browsers - use FileSaver.js pattern
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.href = url;
     link.download = filename;
-    
-    console.log('Link created:');
-    console.log('  - href:', link.href);
-    console.log('  - download attribute:', link.download);
-    console.log('  - link.getAttribute("download"):', link.getAttribute('download'));
-    
+
     // Append to body (required for Firefox)
     document.body.appendChild(link);
-    
+
     // Dispatch click event (more reliable than link.click())
     const event = new MouseEvent('click', {
       view: window,
@@ -433,15 +446,13 @@ function safeDownload(content, filename, mimeType) {
       cancelable: true
     });
     link.dispatchEvent(event);
-    console.log('Click event dispatched');
-    
+
     // Cleanup after download starts
     setTimeout(() => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      console.log('Cleanup completed');
     }, 100);
-    
+
   } catch (e) {
     console.error('Download error:', e);
     // Fallback: prompt user to save manually
@@ -517,6 +528,21 @@ function injectMarksToMd(content, marks) {
 }
 
 /* ===== MARK POPUP ===== */
+// Remap block-level marks ('block-<n>') when blocks are inserted, removed, or
+// reordered, so review annotations stay attached to their original block.
+// `fn` maps an old block index to its new index; returning null drops the mark.
+// Cell-level marks (ids that are not 'block-<n>') are left untouched.
+function remapBlockMarks(marks, fn) {
+  return (marks || [])
+    .map(m => {
+      const mt = /^block-(\d+)$/.exec(m.blockId || '');
+      if (!mt) return m;
+      const ni = fn(parseInt(mt[1], 10));
+      return ni == null ? null : { ...m, blockId: 'block-' + ni };
+    })
+    .filter(Boolean);
+}
+
 function MarkPopup({ mark, position, onSave, onDelete, onClose }) {
   const [issue, setIssue] = useState(mark?.issue || '');
   const [editing, setEditing] = useState(!mark);
@@ -1589,7 +1615,7 @@ function HtmlContentEditable({ html, onSave, onCancel }) {
 }
 
 /* ===== INLINE BLOCK ===== */
-function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction, mermaidReady, mermaidThemeVer }) {
+function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, marks, onStartEdit, onFinishEdit, onMark, onBlockAction, mermaidReady, mermaidFailed, mermaidThemeVer }) {
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const mouseDownRef = useRef(null);
@@ -1909,6 +1935,13 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
                 <div className="mm-err-title">Mermaid 語法錯誤</div>
                 <div className="mm-err-msg">{mermaidErr}</div>
                 <div className="mm-err-hint">點擊此區塊編輯修正語法</div>
+              </div>
+            ) : mermaidFailed ? (
+              <div className="mermaid-body mermaid-error">
+                <div className="mm-err-icon">{'⚠'} </div>
+                <div className="mm-err-title">Mermaid 載入失敗</div>
+                <div className="mm-err-msg">無法載入圖表函式庫（可能離線或 CDN 被封鎖），以下為原始碼：</div>
+                <pre className="mm-err-source" style={{whiteSpace:'pre-wrap',textAlign:'left',width:'100%',fontSize:'12px',margin:0,overflowX:'auto'}}>{extractMermaidCode(raw)}</pre>
               </div>
             ) : (
               <div className="mermaid-body mermaid-loading">
@@ -3318,6 +3351,7 @@ export default function MdReviewer() {
   const [viewMode, setViewMode] = useState('preview');
   const [showDashboard, setShowDashboard] = useState(false);
   const [mermaidReady, setMermaidReady] = useState(false);
+  const [mermaidFailed, setMermaidFailed] = useState(false);
   const [mermaidThemeVer, setMermaidThemeVer] = useState(0);
   const [showToc, setShowToc] = useState(false);
   const [tocWidth, setTocWidth] = useState(220);
@@ -3427,13 +3461,21 @@ export default function MdReviewer() {
       setMermaidThemeVer(v => v + 1);
       return;
     }
+    let timer = null;
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js';
     script.onload = () => {
+      if (timer) clearTimeout(timer);
       window.mermaid.initialize(mmConfig);
+      setMermaidFailed(false);
       setMermaidReady(true);
     };
+    // CDN blocked / offline: surface the source instead of an endless spinner.
+    script.onerror = () => { if (timer) clearTimeout(timer); setMermaidFailed(true); };
+    // Fallback if neither onload nor onerror fires (e.g. the request hangs).
+    timer = setTimeout(() => { if (!window.mermaid) setMermaidFailed(true); }, 12000);
     document.head.appendChild(script);
+    return () => { if (timer) clearTimeout(timer); };
   }, [mmConfig]);
 
   const activeFile = files.find(f => f.id === activeId);
@@ -3556,7 +3598,9 @@ export default function MdReviewer() {
     switch (action) {
       case 'addAbove': {
         cur.splice(idx, 0, '<!-- spacer -->');
-        updateFile(activeFile.id, { content: joinMdBlocks(cur) });
+        // Inserting at idx pushes this block and everything after it down by one.
+        const marks = remapBlockMarks(activeFile.marks, n => n >= idx ? n + 1 : n);
+        updateFile(activeFile.id, { content: joinMdBlocks(cur), marks });
         setTimeout(() => {
           const el = document.getElementById('block-' + idx);
           if (el) { el.classList.add('block-flash'); setTimeout(() => el.classList.remove('block-flash'), 1800); }
@@ -3565,7 +3609,8 @@ export default function MdReviewer() {
       }
       case 'addBelow': {
         cur.splice(idx + 1, 0, '<!-- spacer -->');
-        updateFile(activeFile.id, { content: joinMdBlocks(cur) });
+        const marks = remapBlockMarks(activeFile.marks, n => n >= idx + 1 ? n + 1 : n);
+        updateFile(activeFile.id, { content: joinMdBlocks(cur), marks });
         setTimeout(() => {
           const el = document.getElementById('block-' + (idx + 1));
           if (el) { el.classList.add('block-flash'); setTimeout(() => el.classList.remove('block-flash'), 1800); }
@@ -3574,8 +3619,11 @@ export default function MdReviewer() {
       }
       case 'delete': {
         cur.splice(idx, 1);
-        // Also remove marks for this block
-        const newMarks = activeFile.marks.filter(m => m.blockId !== blockId);
+        // Remove marks on the deleted block, then shift later blocks' marks up by one.
+        const newMarks = remapBlockMarks(
+          activeFile.marks.filter(m => m.blockId !== blockId),
+          n => n > idx ? n - 1 : n
+        );
         updateFile(activeFile.id, { content: joinMdBlocks(cur), marks: newMarks });
         break;
       }
@@ -3584,11 +3632,19 @@ export default function MdReviewer() {
         break;
       }
       case 'moveUp': {
-        if (idx > 0) { [cur[idx - 1], cur[idx]] = [cur[idx], cur[idx - 1]]; updateFile(activeFile.id, { content: joinMdBlocks(cur) }); }
+        if (idx > 0) {
+          [cur[idx - 1], cur[idx]] = [cur[idx], cur[idx - 1]];
+          const marks = remapBlockMarks(activeFile.marks, n => n === idx ? idx - 1 : n === idx - 1 ? idx : n);
+          updateFile(activeFile.id, { content: joinMdBlocks(cur), marks });
+        }
         break;
       }
       case 'moveDown': {
-        if (idx < cur.length - 1) { [cur[idx], cur[idx + 1]] = [cur[idx + 1], cur[idx]]; updateFile(activeFile.id, { content: joinMdBlocks(cur) }); }
+        if (idx < cur.length - 1) {
+          [cur[idx], cur[idx + 1]] = [cur[idx + 1], cur[idx]];
+          const marks = remapBlockMarks(activeFile.marks, n => n === idx ? idx + 1 : n === idx + 1 ? idx : n);
+          updateFile(activeFile.id, { content: joinMdBlocks(cur), marks });
+        }
         break;
       }
       case 'toH1': { cur[idx] = '# ' + stripPrefix(cur[idx]); updateFile(activeFile.id, { content: joinMdBlocks(cur) }); break; }
@@ -3622,7 +3678,7 @@ export default function MdReviewer() {
     updateFile(activeFile.id, { marks: activeFile.marks.filter(m => m.blockId !== popup.blockId) }); setPopup(null);
   }, [popup, activeFile, updateFile]);
 
-  const doFormat = () => { if (activeFile) { /* pushHistory(activeFile.id, activeFile.content); */ updateFile(activeFile.id, { content: formatMarkdown(activeFile.content) }); } };
+  const doFormat = () => { if (activeFile) { pushHistory(activeFile.id, activeFile.content); updateFile(activeFile.id, { content: formatMarkdown(activeFile.content) }); } };
   const doExport = () => {
     const state = { version: 1, exportedAt: new Date().toISOString(), files: files.map(f => ({ name: f.name, content: f.content, originalContent: f.originalContent, marks: f.marks, status: f.status })) };
     safeDownload(JSON.stringify(state, null, 2), '審核狀態_' + new Date().toISOString().slice(0, 10) + '.json', 'application/json');
@@ -4212,7 +4268,7 @@ export default function MdReviewer() {
                       <span>⋮⋮ 左側手柄 → 區塊操作</span>
                     </div>
                     {blocks.map((block, i) => (
-                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction} mermaidReady={mermaidReady} mermaidThemeVer={mermaidThemeVer}/>
+                      <InlineBlock key={activeFile.id+'-'+i} blockId={'block-'+i} blockIdx={i} totalBlocks={blocks.length} raw={block} html={blockHtmls[i]||''} isEditing={editingBlock==='block-'+i} marks={activeFile.marks} onStartEdit={onStartEdit} onFinishEdit={onFinishEdit} onMark={onBlockMark} onBlockAction={onBlockAction} mermaidReady={mermaidReady} mermaidFailed={mermaidFailed} mermaidThemeVer={mermaidThemeVer}/>
                     ))}
                     {!blocks.length && <div className="text-center py-10 text-gray-400 text-sm">檔案內容為空</div>}
                   </div>

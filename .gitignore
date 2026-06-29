@@ -47,6 +47,15 @@ tests/screenshots/
 test-data-scenarios/
 .playwright-mcp/
 
+# Generated canary test output
+tests/canary-results.json
+tests/canary-screenshots/
+
+# Scratch debug artifacts in repo root (Playwright screenshots / console dumps)
+/*.png
+/playwright-*.txt
+/*-console-errors.txt
+
 # Editor directories and files
 *.suo
 *.ntvs*
