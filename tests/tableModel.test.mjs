@@ -21,27 +21,43 @@ check('makeMeta defaults primary 1x1', (() => { const m = makeMeta(); return m.p
   check('ensureMeta is pure (no source mutation)', src[0].cells[0] === 'x');
 }
 
-console.log('canMerge / mergeCells:');
+console.log('canMerge / mergeCells (concatenate, no data loss):');
 {
   const g = ensureMeta([{ cells: ['a', 'b', 'c'] }, { cells: ['d', 'e', 'f'] }]);
   check('canMerge true for 2x2', canMerge(g, { r1: 0, c1: 0, r2: 1, c2: 1 }));
   check('canMerge false for single cell', !canMerge(g, { r1: 0, c1: 0, r2: 0, c2: 0 }));
   const m = mergeCells(g, { r1: 0, c1: 0, r2: 1, c2: 1 });
   check('primary colspan/rowspan = 2', m[0].cellMeta[0].colspan === 2 && m[0].cellMeta[0].rowspan === 2);
-  check('keeps top-left text', m[0].cells[0] === 'a');
+  check('CONCATENATES all non-empty text (no loss)', m[0].cells[0] === 'a\nb\nd\ne');
   check('covered cell spannedBy 0,0', m[0].cellMeta[1].spannedBy && m[0].cellMeta[1].spannedBy.r === 0 && m[0].cellMeta[1].spannedBy.c === 0);
   check('covered cell text cleared', m[0].cells[1] === '' && m[1].cells[0] === '');
   check('untouched cell intact', m[0].cells[2] === 'c');
-  check('canMerge false if overlaps existing span', !canMerge(m, { r1: 0, c1: 0, r2: 0, c2: 2 }));
   check('mergeCells pure (source unchanged)', g[0].cellMeta[0].colspan === 1);
 }
+{
+  // only top-left has text -> result is just that text (clean, like keep-top-left)
+  const g = ensureMeta([{ cells: ['title', '', ''] }]);
+  const m = mergeCells(g, { r1: 0, c1: 0, r2: 0, c2: 2 });
+  check('single-content merge stays clean', m[0].cells[0] === 'title' && m[0].cellMeta[0].colspan === 3);
+}
+{
+  // CROSS-MERGE: two already-merged full-width rows (each colspan=3) -> merge vertically,
+  // concatenating their text into one colspan=3 rowspan=2 cell.
+  let g = ensureMeta([{ cells: ['總說明X', '', ''] }, { cells: ['填寫說明Y', '', ''] }]);
+  g = mergeCells(g, { r1: 0, c1: 0, r2: 0, c2: 2 }); // row 0 -> colspan 3
+  g = mergeCells(g, { r1: 1, c1: 0, r2: 1, c2: 2 }); // row 1 -> colspan 3
+  check('canMerge across two full-width merged rows', canMerge(g, { r1: 0, c1: 0, r2: 1, c2: 0 }));
+  const m = mergeCells(g, { r1: 0, c1: 0, r2: 1, c2: 0 }); // select left col, expands to full width
+  check('cross-merge -> colspan 3 rowspan 2', m[0].cellMeta[0].colspan === 3 && m[0].cellMeta[0].rowspan === 2);
+  check('cross-merge concatenates both rows text', m[0].cells[0] === '總說明X\n填寫說明Y');
+}
 
-console.log('rangeHasContent:');
+console.log('rangeHasContent (informational: >1 cell has text):');
 {
   const g = ensureMeta([{ cells: ['title', '', ''] }]);
-  check('false when only top-left has text', !rangeHasContent(g, { r1: 0, c1: 0, r2: 0, c2: 2 }));
+  check('false when only one cell has text', !rangeHasContent(g, { r1: 0, c1: 0, r2: 0, c2: 2 }));
   const g2 = ensureMeta([{ cells: ['title', 'x', ''] }]);
-  check('true when another cell has text', rangeHasContent(g2, { r1: 0, c1: 0, r2: 0, c2: 2 }));
+  check('true when two cells have text', rangeHasContent(g2, { r1: 0, c1: 0, r2: 0, c2: 2 }));
 }
 
 console.log('splitCell / isMergedPrimary:');

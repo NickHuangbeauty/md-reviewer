@@ -42,31 +42,78 @@ function rectCells(range) {
 
 const colCountOf = (g) => Math.max(...g.map(r => r.cells.length), 1);
 
-// True only if the range spans >1 cell and every covered cell is a plain 1x1 primary.
-export function canMerge(grid, range) {
-  const s = norm(range);
-  if (s.r1 === s.r2 && s.c1 === s.c2) return false;
-  return rectCells(s).every(([r, c]) => {
+// Expand a selection rectangle so it fully covers any already-merged cell that
+// overlaps its boundary — lets you merge across existing colspan/rowspan cells
+// (e.g. several full-width colspan=6 rows) without splitting them.
+function expandRange(grid, range) {
+  let { r1, c1, r2, c2 } = norm(range);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) {
+      const m = grid[r] && grid[r].cellMeta && grid[r].cellMeta[c];
+      if (!m) continue;
+      let pr = r, pc = c;
+      if (m.spannedBy) { pr = m.spannedBy.r; pc = m.spannedBy.c; }
+      const pm = grid[pr] && grid[pr].cellMeta && grid[pr].cellMeta[pc];
+      if (!pm) continue;
+      const er = pr + (pm.rowspan || 1) - 1, ec = pc + (pm.colspan || 1) - 1;
+      if (pr < r1) { r1 = pr; changed = true; }
+      if (pc < c1) { c1 = pc; changed = true; }
+      if (er > r2) { r2 = er; changed = true; }
+      if (ec > c2) { c2 = ec; changed = true; }
+    }
+  }
+  return { r1, c1, r2, c2 };
+}
+
+// Count distinct primary cells inside a range.
+function countPrimaries(grid, s) {
+  let n = 0;
+  for (let r = s.r1; r <= s.r2; r++) for (let c = s.c1; c <= s.c2; c++) {
     const m = grid[r] && grid[r].cellMeta && grid[r].cellMeta[c];
-    return m && m.primary && !m.spannedBy && m.colspan === 1 && m.rowspan === 1;
-  });
+    if (m && m.primary && !m.spannedBy) n++;
+  }
+  return n;
 }
 
-// True if any cell OTHER than the top-left has non-whitespace text (-> confirm before merge).
+// Mergeable when the (expanded) range covers more than one primary cell.
+export function canMerge(grid, range) {
+  return countPrimaries(grid, expandRange(grid, range)) >= 2;
+}
+
+// True if more than one cell in the range carries text (informational only — merge
+// never discards: it concatenates).
 export function rangeHasContent(grid, range) {
-  const s = norm(range);
-  return rectCells(s).some(([r, c]) => (r !== s.r1 || c !== s.c1) && (grid[r].cells[c] || '').trim() !== '');
+  const s = expandRange(grid, range);
+  let withText = 0;
+  for (let r = s.r1; r <= s.r2; r++) for (let c = s.c1; c <= s.c2; c++) {
+    const m = grid[r] && grid[r].cellMeta && grid[r].cellMeta[c];
+    if (m && m.primary && !m.spannedBy && (grid[r].cells[c] || '').trim()) withText++;
+  }
+  return withText > 1;
 }
 
-// Merge the range: top-left becomes the primary spanning the rectangle; the rest become
-// spannedBy placeholders with cleared text. Keeps top-left content.
+// Merge the range into a single cell. Range auto-expands to cover overlapped merges.
+// CONCATENATES every primary cell's non-empty text (newline-joined) so NOTHING is lost —
+// critical for merging text-heavy rows (e.g. 總說明 / 填寫說明 / 1 / 2 / 3). The top-left
+// cell's background style/header flag are preserved.
 export function mergeCells(grid, range) {
-  if (!canMerge(grid, range)) return grid;
-  const s = norm(range);
+  const s = expandRange(grid, range);
+  if (countPrimaries(grid, s) < 2) return grid;
   const g = ensureMeta(grid);
-  g[s.r1].cellMeta[s.c1].colspan = s.c2 - s.c1 + 1;
-  g[s.r1].cellMeta[s.c1].rowspan = s.r2 - s.r1 + 1;
-  for (const [r, c] of rectCells(s)) {
+  const texts = [];
+  for (let r = s.r1; r <= s.r2; r++) for (let c = s.c1; c <= s.c2; c++) {
+    const m = g[r].cellMeta[c];
+    if (m.primary && !m.spannedBy) { const t = (g[r].cells[c] || '').trim(); if (t) texts.push(t); }
+  }
+  const tl = g[s.r1].cellMeta[s.c1];
+  g[s.r1].cells[s.c1] = texts.join('\n');
+  g[s.r1].cellMeta[s.c1] = makeMeta({
+    colspan: s.c2 - s.c1 + 1, rowspan: s.r2 - s.r1 + 1,
+    isHeader: tl.isHeader, style: tl.style, align: tl.align, height: tl.height,
+  });
+  for (let r = s.r1; r <= s.r2; r++) for (let c = s.c1; c <= s.c2; c++) {
     if (r === s.r1 && c === s.c1) continue;
     g[r].cells[c] = '';
     g[r].cellMeta[c] = makeMeta({ primary: false, spannedBy: { r: s.r1, c: s.c1 }, isHeader: g[r].cellMeta[c].isHeader });

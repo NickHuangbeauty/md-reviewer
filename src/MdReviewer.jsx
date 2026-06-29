@@ -915,7 +915,7 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   const doMergeSel = () => {
     const s = normRange(selRange);
     if (!s || !canMerge(data, s)) return;
-    if (rangeHasContent(data, s) && !window.confirm('其餘格內容將被清除，確定？')) return;
+    if (rangeHasContent(data, s) && !window.confirm('多個有內容的格將合併成一格（內容以換行串接，不會遺失），確定？')) return;
     commitGrid(mergeCells(data, s));
     if (outFmt !== 'html') setOutFmt('html');
     setSelRange({ r1: s.r1, c1: s.c1, r2: s.r1, c2: s.c1 });
