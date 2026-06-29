@@ -4,6 +4,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AlertCircle, Check, GripVertical } from 'lucide-react';
 import { parseMdTableToGrid, parseHtmlTableToGrid } from '../lib/table.js';
+import { sanitizeHtml } from '../lib/sanitize.js';
 import { InlineTableEditor } from './TableEditor.jsx';
 import { FloatingToolbar, SlashMenu, BlockHandleMenu } from './EditorMenus.jsx';
 import renderMathInElement from 'katex/contrib/auto-render';
@@ -632,7 +633,7 @@ export function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditi
         onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(blockId, e); }}>
         {isMermaid ? (
           <div className="pv">
-            <div dangerouslySetInnerHTML={{ __html: html }} />
+            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
             {mermaidSvg ? (
               <div className="mermaid-body mermaid-rendered">
                 <div className="mermaid-svg-wrap" dangerouslySetInnerHTML={{ __html: mermaidSvg }} />
@@ -654,7 +655,7 @@ export function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditi
             )}
           </div>
         ) : (
-          <div className="pv" dangerouslySetInnerHTML={{ __html: html }} />
+          <div className="pv" dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
         )}
         {hasMark && (
           <div className="mark-badge" onClick={(e) => { e.stopPropagation(); onMark(blockId, e); }}>

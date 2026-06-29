@@ -195,7 +195,9 @@ export default function MdReviewer() {
     return { ...shared, theme: 'neutral', themeVariables: { ...font, primaryColor: '#dbeafe', primaryTextColor: '#1e3a5f', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f0fdf4', tertiaryColor: '#fef3c7' } };
   }, [theme]);
 
-  // Load Mermaid.js from CDN
+  // Load Mermaid via dynamic import (bundled, no external CDN — H2 fix).
+  // Code-split into its own chunk; loaded on first need, works offline / in
+  // locked-down networks where cdnjs is unreachable.
   useEffect(() => {
     if (window.mermaid) {
       window.mermaid.initialize(mmConfig);
@@ -203,13 +205,16 @@ export default function MdReviewer() {
       setMermaidThemeVer(v => v + 1);
       return;
     }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js';
-    script.onload = () => {
-      window.mermaid.initialize(mmConfig);
-      setMermaidReady(true);
-    };
-    document.head.appendChild(script);
+    let cancelled = false;
+    import('mermaid')
+      .then(({ default: mermaid }) => {
+        if (cancelled) return;
+        window.mermaid = mermaid;
+        mermaid.initialize(mmConfig);
+        setMermaidReady(true);
+      })
+      .catch(err => console.error('[Mermaid] 動態載入失敗', err));
+    return () => { cancelled = true; };
   }, [mmConfig]);
 
   const activeFile = files.find(f => f.id === activeId);

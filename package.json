@@ -20,8 +20,10 @@
   },
   "dependencies": {
     "diff": "^5.2.0",
+    "dompurify": "^3.4.11",
     "katex": "^0.16.38",
     "lucide-react": "^0.263.1",
+    "mermaid": "^10.9.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
