@@ -12,8 +12,11 @@
     "test:engine": "node tests/diff-engine.test.mjs",
     "test:table": "node tests/table.test.mjs",
     "test:markdown": "node tests/markdown.test.mjs",
+    "test:diffstats": "node tests/diffstats.test.mjs",
+    "test:featureflags": "node --import ./tests/_register-loader.mjs tests/featureflags.test.mjs",
+    "test:embedapi": "node --import ./tests/_register-loader.mjs tests/embedapi.test.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:smoke"
+    "test:all": "npm run test:engine && npm run test:table && npm run test:markdown && npm run test:diffstats && npm run test:featureflags && npm run test:embedapi && npm run test:smoke"
   },
   "dependencies": {
     "diff": "^5.2.0",
