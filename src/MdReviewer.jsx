@@ -3,7 +3,7 @@ import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
-import { mergeCells, splitCell, canMerge, rangeHasContent, isMergedPrimary } from './tableModel.js';
+import { mergeCells, splitCell, canMerge, rangeHasContent, isMergedPrimary, isDiagonal, setDiagonal, clearDiagonal, insertCol as tmInsertCol, deleteCol as tmDeleteCol, insertRow as tmInsertRow, deleteRow as tmDeleteRow } from './tableModel.js';
 import DOMPurify from 'dompurify';
 import renderMathInElement from 'katex/contrib/auto-render';
 
@@ -14,9 +14,9 @@ import renderMathInElement from 'katex/contrib/auto-render';
 // to the app's own generated markup (e.g. the code-block copy button's onclick).
 function sanitizeUserHtml(dirty) {
   return DOMPurify.sanitize(dirty, {
-    ADD_TAGS: ['style'],
-    ADD_ATTR: ['colspan', 'rowspan', 'align', 'valign', 'target'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+    ADD_TAGS: ['style', 'svg', 'line'],
+    ADD_ATTR: ['colspan', 'rowspan', 'align', 'valign', 'target', 'viewBox', 'preserveAspectRatio', 'x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'foreignObject'],
     ALLOW_DATA_ATTR: false,
     FORCE_BODY: true, // keep a leading <style> in the output (else parsed into <head> and dropped)
   });
@@ -683,7 +683,13 @@ function parseHtmlTableToGrid(raw) {
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .trim();
-      cells.push({ text, colspan, rowspan, isHeader: tag === 'th', style, align, height });
+      // diagonal-split cell: recover the two labels
+      let diag = null;
+      if (/class\s*=\s*["'][^"']*\bdiag-cell\b/i.test(attrs)) {
+        const grab = (cls) => (content.match(new RegExp(cls + '[^>]*>([\\s\\S]*?)<\\/span>', 'i')) || [, ''])[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+        diag = { up: grab('diag-up'), lo: grab('diag-lo') };
+      }
+      cells.push({ text: diag ? '' : text, colspan, rowspan, isHeader: tag === 'th', style, align, height, diag });
     }
     if (cells.length) rawRows.push(cells);
   }
@@ -732,7 +738,8 @@ function parseHtmlTableToGrid(raw) {
                 style: cell.style,
                 align: cell.align,
                 height: cell.height,
-                primary: true
+                primary: true,
+                ...(cell.diag ? { diag: cell.diag } : {})
               };
               if (cell.isHeader) grid[r].isHeader = true;
             } else {
@@ -809,6 +816,12 @@ function gridToHtmlTable(grid) {
       if (meta.align) attrs += ` align="${meta.align}"`;
       if (meta.height) attrs += ` height="${meta.height}"`;
       const styleAttr = styles.length ? ` style="${styles.join('; ')}"` : '';
+      // diagonal-split header cell: SVG line + two labels (upper-right / lower-left)
+      if (meta.diag) {
+        const up = esc(meta.diag.up || ''), lo = esc(meta.diag.lo || '');
+        h += `    <${tag}${attrs}${styleAttr} class="diag-cell"><svg viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" stroke-width="1"/></svg><span class="diag-up">${up}</span><span class="diag-lo">${lo}</span></${tag}>\n`;
+        return;
+      }
       // Convert newlines back to <br>
       const content = cellText.split('\n').map(l => esc(l)).join('<br>');
       h += `    <${tag}${attrs}${styleAttr}>${content}</${tag}>\n`;
@@ -908,6 +921,18 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
     setSelRange({ r1: s.r1, c1: s.c1, r2: s.r1, c2: s.c1 });
   };
   const doSplitSel = () => { const s = normRange(selRange); if (selSingleMerged()) { commitGrid(splitCell(data, s.r1, s.c1)); } };
+  const selSingleCell = () => { const s = normRange(selRange); return s && s.r1 === s.r2 && s.c1 === s.c2; };
+  const doDiagonalSel = () => {
+    const s = normRange(selRange);
+    if (!selSingleCell()) return;
+    if (isDiagonal(data, s.r1, s.c1)) commitGrid(clearDiagonal(data, s.r1, s.c1));
+    else { commitGrid(setDiagonal(data, s.r1, s.c1, '', '')); if (outFmt !== 'html') setOutFmt('html'); }
+  };
+  // live-edit the two diagonal labels (no per-keystroke history entry)
+  const updateDiag = (ri, ci, up, lo) => {
+    setStructureChanged(true);
+    setData(prev => prev.map((r, i) => i !== ri ? r : { ...r, cells: [...r.cells], cellMeta: r.cellMeta.map((m, j) => j !== ci ? m : { ...m, diag: { up, lo } }) }));
+  };
 
   const hasMeta = data.some(r => r.cellMeta && r.cellMeta.some(m => m && (m.colspan > 1 || m.rowspan > 1)));
   const serialize = (d) => outFmt === 'html' ? gridToHtmlTable(d) : gridToMdTable(d);
@@ -943,64 +968,14 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
   const colCount = Math.max(...data.map(r => r.cells.length), 1);
 
   // Row & Column operations (simple mode — for tables without colspan/rowspan)
-  const addRowBelow = (ri) => {
-    const nd = cloneGrid(data);
-    const newRow = { cells: Array(colCount).fill(''), isHeader: false };
-    if (hasMeta) {
-      newRow.cellMeta = Array(colCount).fill(null).map(() => ({ colspan: 1, rowspan: 1, isHeader: false, style: '', align: '', height: '', primary: true }));
-    }
-    nd.splice(ri + 1, 0, newRow);
-    setStructureChanged(true); setData(nd); setCtxMenu(null);
-  };
-  const addRowAbove = (ri) => {
-    const nd = cloneGrid(data);
-    const newRow = { cells: Array(colCount).fill(''), isHeader: false };
-    if (hasMeta) {
-      newRow.cellMeta = Array(colCount).fill(null).map(() => ({ colspan: 1, rowspan: 1, isHeader: false, style: '', align: '', height: '', primary: true }));
-    }
-    nd.splice(ri, 0, newRow);
-    setStructureChanged(true); setData(nd); setCtxMenu(null);
-  };
-  const deleteRow = (ri) => {
-    if (data.length <= 1) return;
-    setStructureChanged(true); setData(prev => prev.filter((_, i) => i !== ri)); setCtxMenu(null);
-  };
-  const addColRight = (ci) => {
-    setStructureChanged(true);
-    setData(prev => prev.map(r => {
-      const cells = [...r.cells.slice(0, ci + 1), '', ...r.cells.slice(ci + 1)];
-      let cellMeta = r.cellMeta;
-      if (cellMeta) {
-        const newMeta = { colspan: 1, rowspan: 1, isHeader: false, style: '', align: '', height: '', primary: true };
-        cellMeta = [...cellMeta.slice(0, ci + 1), newMeta, ...cellMeta.slice(ci + 1)];
-      }
-      return { ...r, cells, cellMeta };
-    }));
-    setCtxMenu(null);
-  };
-  const addColLeft = (ci) => {
-    setStructureChanged(true);
-    setData(prev => prev.map(r => {
-      const cells = [...r.cells.slice(0, ci), '', ...r.cells.slice(ci)];
-      let cellMeta = r.cellMeta;
-      if (cellMeta) {
-        const newMeta = { colspan: 1, rowspan: 1, isHeader: false, style: '', align: '', height: '', primary: true };
-        cellMeta = [...cellMeta.slice(0, ci), newMeta, ...cellMeta.slice(ci)];
-      }
-      return { ...r, cells, cellMeta };
-    }));
-    setCtxMenu(null);
-  };
-  const deleteCol = (ci) => {
-    if (colCount <= 1) return;
-    setStructureChanged(true);
-    setData(prev => prev.map(r => ({
-      ...r,
-      cells: r.cells.filter((_, j) => j !== ci),
-      cellMeta: r.cellMeta ? r.cellMeta.filter((_, j) => j !== ci) : null
-    })));
-    setCtxMenu(null);
-  };
+  // Row/column structural ops go through the span-aware tableModel fns (fix BUG 4:
+  // they reindex spannedBy + adjust spanning primaries) and commit to undo history.
+  const addRowBelow = (ri) => { commitGrid(tmInsertRow(data, ri + 1)); setCtxMenu(null); };
+  const addRowAbove = (ri) => { commitGrid(tmInsertRow(data, ri)); setCtxMenu(null); };
+  const deleteRow = (ri) => { if (data.length <= 1) return; commitGrid(tmDeleteRow(data, ri)); setCtxMenu(null); };
+  const addColRight = (ci) => { commitGrid(tmInsertCol(data, ci + 1)); setCtxMenu(null); };
+  const addColLeft = (ci) => { commitGrid(tmInsertCol(data, ci)); setCtxMenu(null); };
+  const deleteCol = (ci) => { if (colCount <= 1) return; commitGrid(tmDeleteCol(data, ci)); setCtxMenu(null); };
   const clearCell = (ri, ci) => {
     updateCell(ri, ci, '');
     setCtxMenu(null);
@@ -1024,6 +999,24 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
       const spanProps = {};
       if (meta && meta.colspan > 1) spanProps.colSpan = meta.colspan;
       if (meta && meta.rowspan > 1) spanProps.rowSpan = meta.rowspan;
+
+      // diagonal-split cell editor: SVG line + two editable labels
+      if (meta && meta.diag) {
+        cellElements.push(
+          <Tag key={ci} {...spanProps}
+            className={'cell-normal diag-edit' + (cellInSel(ri, ci) ? ' cell-sel' : '')}
+            onMouseDown={() => onCellMouseDown(ri, ci)}
+            onMouseOver={() => onCellMouseEnter(ri, ci)}
+            onContextMenu={e => handleCtxMenu(e, ri, ci)}>
+            <svg className="diag-svg" viewBox="0 0 100 100" preserveAspectRatio="none"><line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" strokeWidth="1" /></svg>
+            <input className="diag-in diag-in-up" value={meta.diag.up} placeholder="欄"
+              onChange={e => updateDiag(ri, ci, e.target.value, meta.diag.lo)} />
+            <input className="diag-in diag-in-lo" value={meta.diag.lo} placeholder="列"
+              onChange={e => updateDiag(ri, ci, meta.diag.up, e.target.value)} />
+          </Tag>
+        );
+        return;
+      }
 
       cellElements.push(
         <Tag key={ci}
@@ -1072,6 +1065,7 @@ function InlineTableEditor({ grid, outputFormat, onSave, onCancel }) {
         <div className="te-merge-bar" onMouseDown={e => e.preventDefault()}>
           <button className="te-mbtn" disabled={!canMerge(data, normRange(selRange))} onClick={doMergeSel} title="合併選取的儲存格">⛶ 合併儲存格</button>
           <button className="te-mbtn" disabled={!selSingleMerged()} onClick={doSplitSel} title="分割已合併的儲存格">⊟ 分割</button>
+          <button className="te-mbtn" disabled={!selSingleCell()} onClick={doDiagonalSel} title="斜線表頭（右上欄／左下列）">◿ 斜線</button>
           <span className="te-mbar-sep" />
           <button className="te-mbtn" onClick={undoEdit} title="復原">↶ 復原</button>
           <button className="te-mbtn" onClick={redoEdit} title="重做">↷ 重做</button>
@@ -3985,6 +3979,15 @@ export default function MdReviewer() {
     .te-mbtn:hover:not(:disabled){background:var(--accent-bg);border-color:var(--accent-border)}
     .te-mbtn:disabled{opacity:.4;cursor:not-allowed}
     .te-mbar-sep{width:1px;height:18px;background:var(--border2);margin:0 2px}
+    .diag-edit{position:relative;min-width:120px;height:60px;padding:0 !important}
+    .diag-svg{position:absolute;inset:0;width:100%;height:100%;color:var(--border2);pointer-events:none}
+    .diag-in{position:absolute;border:none;outline:none;background:transparent;color:var(--text);font-size:11.5px;font-family:var(--font);width:54px;text-align:center}
+    .diag-in-up{top:5px;right:6px} .diag-in-lo{bottom:5px;left:6px}
+    .diag-in:focus{background:var(--accent-bg)}
+    .pv .diag-cell{position:relative;min-width:96px;height:56px;vertical-align:middle}
+    .pv .diag-cell svg{position:absolute;inset:0;width:100%;height:100%;color:var(--border2);pointer-events:none}
+    .pv .diag-up{position:absolute;top:4px;right:8px;font-size:.85em}
+    .pv .diag-lo{position:absolute;bottom:4px;left:8px;font-size:.85em}
     .table-editor-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;background:var(--accent-bg);border-top:1px solid var(--accent-border)}
     .te-btn{padding:5px 14px;border-radius:var(--radius-sm);font-size:11px;font-weight:500;cursor:pointer;border:1px solid transparent;display:inline-flex;align-items:center;gap:4px;font-family:var(--font);transition:all .15s}
     .te-cancel{background:var(--surface);color:var(--text2);border-color:var(--border)} .te-cancel:hover{background:var(--surface2)}
