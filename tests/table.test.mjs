@@ -141,6 +141,32 @@ console.log('\n--- mergeCells / splitCell ---');
   check('正規化後 (1,1) 非 primary', merged[1].cellMeta[1].primary === false);
 }
 
+console.log('\n--- 複雜合併 round-trip(存檔→重開→拆分還原)---');
+{
+  // 2×2 區塊合併 → 序列化 → 重開：被 rowspan 覆蓋的空列必須保留
+  const g = parseHtmlTableToGrid('<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>');
+  const merged = mergeCells(g, 0, 0, 1, 1);
+  const html = gridToHtmlTable(merged);
+  check('2×2 合併輸出含 colspan="2" 與 rowspan="2"', html.includes('colspan="2"') && html.includes('rowspan="2"'));
+  const reopened = parseHtmlTableToGrid(html);
+  check('2×2 合併重開後仍為 2 列(空列未被丟棄)', reopened.length === 2);
+  check('重開後 (0,0) 仍為 colspan2/rowspan2 primary',
+    reopened[0].cellMeta[0].colspan === 2 && reopened[0].cellMeta[0].rowspan === 2 && reopened[0].cellMeta[0].primary === true);
+  // 重開後再拆分 → 完全還原成 4 個獨立 1×1 格
+  const split = splitCell(reopened, 0, 0);
+  const outSplit = gridToHtmlTable(split);
+  check('2×2 重開後拆分：不含 colspan/rowspan', !outSplit.includes('colspan=') && !outSplit.includes('rowspan='));
+  check('2×2 重開後拆分：恢復 4 個獨立格', (outSplit.match(/<t[dh]/g) || []).length === 4);
+}
+{
+  // 既有複雜表格(已含 colspan+rowspan)round-trip 不掉列
+  const h = '<table><tr><td colspan="2">頂部</td><td>X</td></tr><tr><td>a</td><td>b</td><td rowspan="2">右</td></tr><tr><td>c</td><td>d</td></tr></table>';
+  const g = parseHtmlTableToGrid(h);
+  check('既有複雜表格解析為 3 列', g.length === 3);
+  const g2 = parseHtmlTableToGrid(gridToHtmlTable(g));
+  check('既有複雜表格 round-trip 仍為 3 列', g2.length === 3);
+}
+
 console.log(`\n--- Results: ${passed} passed, ${failed} failed ---`);
 if (failed > 0) { console.log('Table tests FAILED.'); process.exit(1); }
 console.log('All table tests passed.');

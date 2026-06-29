@@ -88,9 +88,13 @@ export function parseHtmlTableToGrid(raw) {
         .trim();
       cells.push({ text, colspan, rowspan, isHeader: tag === 'th', style, align, height });
     }
-    if (cells.length) rawRows.push(cells);
+    // Keep EVERY <tr> (even one with no <td> of its own) so that a row fully
+    // covered by a rowspan from above survives the round-trip. Dropping empty
+    // rows here collapsed merged tables (e.g. 2×2 merge → empty 2nd <tr>) on
+    // reopen, breaking split-restore.
+    rawRows.push(cells);
   }
-  if (!rawRows.length) return null;
+  if (!rawRows.some(r => r.length)) return null;
 
   // Step 2: Determine grid dimensions
   let maxCols = 0;
