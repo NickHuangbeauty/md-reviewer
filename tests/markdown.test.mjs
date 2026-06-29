@@ -6,7 +6,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const { splitMdBlocks, joinMdBlocks } = await import(join(__dirname, '..', 'src', 'lib', 'markdown.js'));
+const { splitMdBlocks, joinMdBlocks, parseBlockToHtml, parseMarkdownTable, highlightCode, formatMarkdown } = await import(join(__dirname, '..', 'src', 'lib', 'markdown.js'));
 const { injectMarksToMd } = await import(join(__dirname, '..', 'src', 'lib', 'marks.js'));
 
 let passed = 0, failed = 0;
@@ -59,6 +59,44 @@ check('mark injected after its block as HTML comment', (() => {
 check('comment-terminator in issue is neutralized', (() => {
   const out = injectMarksToMd('x', [{ blockId: 'block-0', issue: 'a --> b' }]);
   return out.includes('a —> b') && !out.includes('a --> b -->');
+})());
+
+console.log('\n--- parseBlockToHtml (basic md -> html) ---');
+check('empty -> empty string', parseBlockToHtml('') === '');
+check('# heading -> <h1>', parseBlockToHtml('# Title').includes('<h1>Title</h1>'));
+check('## heading -> <h2>', parseBlockToHtml('## Sub').includes('<h2>Sub</h2>'));
+check('bold -> <strong>', parseBlockToHtml('**hi**').includes('<strong>hi</strong>'));
+check('italic -> <em>', parseBlockToHtml('*hi*').includes('<em>hi</em>'));
+check('inline code -> <code class="cd">', parseBlockToHtml('`x`').includes('<code class="cd">x</code>'));
+check('link -> <a ... md-link>', parseBlockToHtml('[t](http://e.com)').includes('<a href="http://e.com" class="md-link">t</a>'));
+check('plain text wrapped in <p>', parseBlockToHtml('hello world').includes('<p>hello world</p>'));
+check('code fence -> code-block', (() => {
+  const out = parseBlockToHtml('```js\nconst a=1;\n```');
+  return out.includes('code-block') && out.includes('code-lang');
+})());
+check('mermaid fence -> mermaid-block', parseBlockToHtml('```mermaid\ngraph TD;A-->B\n```').includes('mermaid-block'));
+check('list -> <ul><li>', (() => {
+  const out = parseBlockToHtml('- a\n- b');
+  return out.includes('<ul>') && out.includes('<li>a</li>') && out.includes('<li>b</li>');
+})());
+check('blockquote -> <blockquote class="bq">', parseBlockToHtml('> note').includes('<blockquote class="bq">'));
+
+console.log('\n--- parseMarkdownTable ---');
+check('null when no pipe table', parseMarkdownTable('plain text') === null);
+check('renders md-table with th/td', (() => {
+  const out = parseMarkdownTable('| a | b |\n| - | - |\n| 1 | 2 |');
+  return out.includes('<table class="md-table">') && out.includes('<th>a</th>') && out.includes('<td>1</td>');
+})());
+
+console.log('\n--- highlightCode ---');
+check('keyword wrapped in hl-kw', highlightCode('const a = 1;', 'js').includes('<span class="hl-kw">const</span>'));
+check('escapes < to &lt;', highlightCode('a < b', 'js').includes('&lt;'));
+
+console.log('\n--- formatMarkdown ---');
+check('falsy passthrough', formatMarkdown('') === '');
+check('adds blank line before heading', (() => {
+  const out = formatMarkdown('text\n# H');
+  return out.includes('text\n\n# H');
 })());
 
 console.log(`\n--- Results: ${passed} passed, ${failed} failed ---`);
