@@ -3891,7 +3891,8 @@ export default function MdReviewer() {
     .preview-block.marked{border-left:3px solid var(--danger);background:var(--danger-bg)}
     .mark-badge{position:absolute;top:4px;right:4px;display:flex;align-items:center;gap:3px;padding:2px 8px;background:var(--danger);color:white;border-radius:12px;font-size:11px;font-weight:500;cursor:pointer;box-shadow:var(--shadow)}
     .edit-block{padding:4px 0}
-    .edit-block textarea{width:100%;padding:12px;border:1.5px solid var(--accent-border);border-radius:var(--radius-sm);resize:none;outline:none;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--accent-bg);box-shadow:0 0 0 3px rgba(37,99,235,.08);transition:border .15s}
+    .edit-block textarea{width:100%;padding:12px;border:1px solid var(--border2);border-radius:8px;resize:none;outline:none;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--surface);color:var(--text);box-shadow:none;transition:border .15s}
+    .edit-block textarea:focus{border-color:var(--accent2)}
     .edit-block textarea:focus{border-color:var(--accent)}
 
     .doc-canvas{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:24px clamp(16px,3%,32px);box-shadow:var(--shadow);overflow:visible;max-width:100%;box-sizing:border-box;width:100%}
@@ -3946,14 +3947,14 @@ export default function MdReviewer() {
     .dash-legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
     .dash-legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
     .dash-row-stacked{display:flex;height:100%;border-radius:4px;overflow:hidden;animation:dashBarIn .4s ease both}
-    .table-editor{border:2px solid var(--accent2);border-radius:var(--radius);overflow:hidden;background:var(--accent-bg);box-shadow:0 0 0 4px rgba(59,130,246,.08)}
+    .table-editor{border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.05)}
     .te-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--accent-border) var(--surface2);-webkit-overflow-scrolling:touch}
     .te-scroll::-webkit-scrollbar{height:7px}
     .te-scroll::-webkit-scrollbar-track{background:var(--surface2);border-radius:10px}
     .te-scroll::-webkit-scrollbar-thumb{background:linear-gradient(90deg,var(--accent-border),var(--border2));border-radius:10px}
     .te-scroll::-webkit-scrollbar-thumb:hover{background:linear-gradient(90deg,var(--accent2),var(--accent))}
     .table-editor table{width:100%;border-collapse:collapse;background:var(--surface);table-layout:auto}
-    .table-editor th,.table-editor td{border:1px solid var(--border2);padding:0;text-align:left;vertical-align:top;font-size:12.5px;min-width:70px;position:relative}
+    .table-editor th,.table-editor td{border:1px solid var(--border);padding:0;text-align:left;vertical-align:top;font-size:12.5px;min-width:70px;position:relative}
     .table-editor th{background:var(--surface2);font-weight:600;font-size:12px}
     .te-row-ctrl{width:26px!important;min-width:26px!important;max-width:26px!important;padding:0!important;border:none!important;background:transparent!important;vertical-align:middle;text-align:center;position:relative}
     .te-add-row,.te-del-row{width:20px;height:20px;border:1.5px dashed var(--border2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text3);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:all .15s;margin:1px auto}
@@ -3972,18 +3973,18 @@ export default function MdReviewer() {
     .te-add-row-bottom{padding:0!important;border:none!important;background:transparent!important}
     .te-add-full{width:100%;padding:6px;border:1.5px dashed var(--border2);background:var(--surface);color:var(--text3);font-size:12px;cursor:pointer;border-radius:0 0 8px 8px;transition:all .15s;font-family:var(--font)}
     .te-add-full:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent2)}
-    .cell-normal{cursor:text;padding:7px 10px;min-height:34px;transition:background .1s}
-    .cell-normal:hover{background:var(--accent-bg)}
-    .cell-focus{padding:0;background:var(--surface);box-shadow:inset 0 0 0 2px var(--accent2)}
+    .cell-normal{cursor:text;padding:9px 13px;min-height:36px;line-height:1.55;transition:background .12s}
+    .cell-normal:hover{background:var(--surface2)}
+    .cell-focus{padding:0;background:var(--surface);box-shadow:inset 0 0 0 1.5px var(--accent2)}
     /* theme-aware: was hardcoded #fef9c3 light yellow → white/inverted in dark mode */
     .cell-input{width:100%;padding:7px 10px;border:none;outline:none;background:var(--surface);color:var(--text);font-size:12.5px;font-family:var(--font);box-sizing:border-box;min-height:34px;line-height:1.5;resize:vertical}
     .cell-text{display:block;min-height:1.4em}
-    .cell-sel{background:var(--accent-bg) !important;box-shadow:inset 0 0 0 1.5px var(--accent2)}
-    .te-merge-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
-    .te-mbtn{padding:4px 10px;border-radius:var(--radius-sm);font-size:11.5px;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--font);transition:all .12s}
-    .te-mbtn:hover:not(:disabled){background:var(--accent-bg);border-color:var(--accent-border)}
+    .cell-sel{background:var(--accent-bg) !important;box-shadow:inset 0 0 0 1px var(--accent2)}
+    .te-merge-bar{display:flex;align-items:center;gap:7px;padding:9px 12px;background:var(--surface);border-bottom:1px solid var(--border2);flex-wrap:wrap}
+    .te-mbtn{padding:5px 12px;border-radius:8px;font-size:12px;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--font);transition:all .12s}
+    .te-mbtn:hover:not(:disabled){background:var(--accent-bg);border-color:var(--accent2);color:var(--accent)}
     .te-mbtn:disabled{opacity:.4;cursor:not-allowed}
-    .te-mbar-sep{width:1px;height:18px;background:var(--border2);margin:0 2px}
+    .te-mbar-sep{width:1px;height:16px;background:var(--border2);margin:0 3px}
     .diag-edit{position:relative;min-width:120px;height:60px;padding:0 !important}
     .diag-svg{position:absolute;inset:0;width:100%;height:100%;color:var(--border2);pointer-events:none}
     .diag-in{position:absolute;border:none;outline:none;background:transparent;color:var(--text);font-size:11.5px;font-family:var(--font);width:54px;text-align:center}

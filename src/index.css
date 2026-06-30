@@ -4,14 +4,14 @@
 
 :root {
   /* LIGHT Theme (Default) — values from MdReviewer.jsx inline styles */
-  --bg: #f8f9fb;
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface2: #f1f3f7;
-  --border: #e2e5ea;
-  --border2: #d0d5dd;
-  --text: #1a1d23;
-  --text2: #4b5563;
-  --text3: #9ca3af;
+  --surface2: #f4f4f6;
+  --border: #ececef;
+  --border2: #dcdde1;
+  --text: #1c1d21;
+  --text2: #565a63;
+  --text3: #9aa0a8;
   --accent: #2563eb;
   --accent2: #3b82f6;
   --accent-bg: #eff6ff;
