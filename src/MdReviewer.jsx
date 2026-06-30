@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon } from 'lucide-react';
+import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History } from 'lucide-react';
+import { RELEASES, CURRENT_VERSION } from './releases.js';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
@@ -2486,6 +2487,53 @@ function DownloadConfirmModal({ filename, onConfirm, onClose }) {
   );
 }
 
+// Release notes / 更新日誌 — theme-aware modal driven by src/releases.js.
+function ReleaseNotesModal({ releases, current, onClose }) {
+  const SECTIONS = [
+    { key: 'added', label: '新增', color: 'var(--success)' },
+    { key: 'changed', label: '修改', color: 'var(--accent)' },
+    { key: 'fixed', label: '修復', color: '#d97706' },
+  ];
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center" style={{ background: 'rgba(0,0,0,.5)' }} onClick={onClose}>
+      <div className="rn-panel" onClick={e => e.stopPropagation()}>
+        <div className="rn-head">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>更新日誌</h3>
+            <span style={{ fontSize: 11, color: 'var(--text2)' }}>目前版本 v{current}</span>
+          </div>
+          <button onClick={onClose} className="rn-x" aria-label="關閉"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="rn-body">
+          {releases.map((rel, i) => (
+            <div key={rel.version} className="rn-rel">
+              <div className="rn-ver">
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>v{rel.version}</span>
+                {i === 0 && <span className="rn-latest">最新</span>}
+                <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 'auto' }}>{rel.date}</span>
+              </div>
+              {SECTIONS.map(sec => (rel[sec.key] && rel[sec.key].length) ? (
+                <div key={sec.key} className="rn-sec">
+                  <span className="rn-tag" style={{ color: sec.color, borderColor: sec.color }}>{sec.label}</span>
+                  <ul className="rn-list">
+                    {rel[sec.key].map((line, j) => <li key={j}>{line}</li>)}
+                  </ul>
+                </div>
+              ) : null)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Virtual scrolling component for large diffs
 function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, needsRefresh, onRefresh, onExpandFold }) {
   const containerRef = useRef(null);
@@ -3397,6 +3445,7 @@ export default function MdReviewer() {
   const [mermaidFailed, setMermaidFailed] = useState(false);
   const [mermaidThemeVer, setMermaidThemeVer] = useState(0);
   const [showToc, setShowToc] = useState(false);
+  const [showReleases, setShowReleases] = useState(false);
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -3440,10 +3489,26 @@ export default function MdReviewer() {
         })),
       }),
       setTheme: (t) => { if (t === 'dark' || t === 'light') setTheme(t); },
-      version: '1.1.0',
+      version: CURRENT_VERSION,
+      openReleaseNotes: () => setShowReleases(true),
     };
     return () => { delete window.mdReviewer; };
   }, [importFiles]);
+
+  // "有什麼新功能" — auto-open release notes once when the version changed since last visit.
+  // First-time visitors are recorded silently (no nag); the badge stays available either way.
+  const SEEN_VERSION_KEY = 'md-reviewer-seen-version';
+  useEffect(() => {
+    try {
+      const last = localStorage.getItem(SEEN_VERSION_KEY);
+      if (!last) { localStorage.setItem(SEEN_VERSION_KEY, CURRENT_VERSION); return; }
+      if (last !== CURRENT_VERSION) setShowReleases(true);
+    } catch { /* localStorage unavailable (private mode) — skip */ }
+  }, []);
+  const closeReleases = useCallback(() => {
+    setShowReleases(false);
+    try { localStorage.setItem(SEEN_VERSION_KEY, CURRENT_VERSION); } catch { /* ignore */ }
+  }, []);
 
   // === P1: URL param support (?theme=dark&mode=embed) ===
   const [embedMode, setEmbedMode] = useState(false);
@@ -3906,6 +3971,23 @@ export default function MdReviewer() {
     .tbtn-gray{background:var(--surface2);color:var(--text2);border-color:var(--border)} .tbtn-gray:hover:not(:disabled){background:#e5e7eb}
     .tbtn-blue{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)} .tbtn-blue:hover:not(:disabled){background:#dbeafe}
     .tbtn-green{background:var(--success);color:#fff;border-color:var(--success)} .tbtn-green:hover:not(:disabled){background:#059669}
+    /* version badge + release notes (更新日誌) */
+    .ver-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--mono,var(--font));cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .15s ease;flex-shrink:0}
+    .ver-badge:hover{border-color:var(--accent2);color:var(--accent);background:var(--accent-bg)}
+    .rn-panel{width:min(92vw,520px);max-height:80vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}
+    .rn-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+    .rn-x{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--text3);cursor:pointer;border:none;background:transparent;transition:all .12s}
+    .rn-x:hover{background:var(--surface2);color:var(--text)}
+    .rn-body{overflow-y:auto;padding:6px 18px 16px}
+    .rn-rel{padding:14px 0;border-bottom:1px solid var(--border)}
+    .rn-rel:last-child{border-bottom:none}
+    .rn-ver{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .rn-latest{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-border);padding:1px 7px;border-radius:999px}
+    .rn-sec{display:flex;gap:9px;margin:7px 0;align-items:flex-start}
+    .rn-tag{flex-shrink:0;font-size:10.5px;font-weight:700;border:1px solid;border-radius:6px;padding:1px 7px;margin-top:2px;line-height:1.5}
+    .rn-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+    .rn-list li{font-size:12.5px;line-height:1.55;color:var(--text2);position:relative;padding-left:13px}
+    .rn-list li::before{content:'';position:absolute;left:2px;top:8px;width:4px;height:4px;border-radius:50%;background:var(--text3)}
     .source-gutter{overflow:hidden;padding:24px 0;background:#0d1117;border-right:1px solid #21262d;user-select:none;flex-shrink:0;min-width:48px}
     .source-gutter-line{font-family:var(--mono);font-size:13px;line-height:1.75;color:#484f58;text-align:right;padding:0 12px 0 12px}
     .source-editor{width:100%;height:100%;padding:24px 24px 24px 16px;font-family:var(--mono);font-size:13px;line-height:1.75;border:none;resize:none;outline:none;background:#0d1117;color:#e6edf3;min-height:0}
@@ -4224,6 +4306,10 @@ export default function MdReviewer() {
             <div><h1 style={{fontSize:15,fontWeight:700,color:'var(--text)',letterSpacing:'-.01em'}}>MD 批次審核</h1><p style={{fontSize:11,color:'var(--text2)',marginTop:1}}>{files.length} 個檔案 · {doneCount} 已完成</p></div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button onClick={() => setShowReleases(true)} className="ver-badge" title="更新日誌 / 版本資訊">
+              <Sparkles className="w-3 h-3" />v{CURRENT_VERSION}
+            </button>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
             {flagDarkMode && (<>
               <button onClick={toggleTheme} className="tbtn tbtn-gray" title={theme === 'light' ? '切換深色模式' : '切換淺色模式'} aria-label="切換主題">
                 {theme === 'light' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
@@ -4393,7 +4479,9 @@ export default function MdReviewer() {
 
       {popup&&<MarkPopup mark={popup.mark} position={popup.position} onSave={saveMark} onDelete={deleteMark} onClose={()=>setPopup(null)}/>}
       {showAdd&&<AddFileModal onAdd={addFile} onBatchAdd={batchAddFile} onClose={()=>setShowAdd(false)}/>}
-      
+
+      {showReleases && <ReleaseNotesModal releases={RELEASES} current={CURRENT_VERSION} onClose={closeReleases} />}
+
       {/* Download Modal */}
       {downloadModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setDownloadModal(null)}>
