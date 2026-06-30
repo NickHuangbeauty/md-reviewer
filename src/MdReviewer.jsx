@@ -1701,6 +1701,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   const textareaRef = useRef(null);
   const previewRef = useRef(null);
   const mouseDownRef = useRef(null);
+  const editTimerRef = useRef(null); // delays single-click edit so double-click can mark instead
   const [editText, setEditText] = useState(raw);
   const [slashMenu, setSlashMenu] = useState(null);
   const [handleMenu, setHandleMenu] = useState(null);
@@ -1709,6 +1710,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
   const [mermaidErr, setMermaidErr] = useState(null);
   const blockMarks = marks.filter(m => m.blockId === blockId);
   const hasMark = blockMarks.length > 0;
+  useEffect(() => () => { if (editTimerRef.current) clearTimeout(editTimerRef.current); }, []);
   const isHtmlTable = /<table/i.test(raw);
   const isMermaid = /^```mermaid\n/i.test(raw);
   const isStyleBlock = /^<style[\s>]/i.test(raw.trim());
@@ -1985,9 +1987,12 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
     const dy = Math.abs(e.clientY - mouseDownRef.current.y);
     const dt = Date.now() - mouseDownRef.current.time;
     mouseDownRef.current = null;
-    // Only trigger edit if it's a real click (small movement, short time)
+    // Only trigger edit if it's a real click (small movement, short time). Delay it so a
+    // double-click (→ mark) can cancel the edit first; otherwise the first click would
+    // enter edit mode and unmount this .preview-block before onDoubleClick could fire.
     if (dx < 5 && dy < 5 && dt < 400) {
-      onStartEdit(blockId);
+      if (editTimerRef.current) clearTimeout(editTimerRef.current);
+      editTimerRef.current = setTimeout(() => { editTimerRef.current = null; onStartEdit(blockId); }, 220);
     }
   };
 
@@ -2003,7 +2008,7 @@ function InlineBlock({ blockId, blockIdx, totalBlocks, raw, html, isEditing, mar
         ref={previewRef}
         onMouseDown={handlePreviewMouseDown}
         onMouseUp={handlePreviewMouseUp}
-        onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(blockId, e); }}>
+        onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); if (editTimerRef.current) { clearTimeout(editTimerRef.current); editTimerRef.current = null; } onMark(blockId, e); }}>
         {isMermaid ? (
           <div className="pv">
             <div dangerouslySetInnerHTML={{ __html: html }} />
