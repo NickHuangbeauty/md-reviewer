@@ -472,12 +472,12 @@ function MarkPopup({ mark, position, onSave, onDelete, onClose }) {
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
       </div>
       {editing ? (<>
-        <textarea value={issue} onChange={e => setIssue(e.target.value)} placeholder="描述問題..."
+        <textarea value={issue} onChange={e => setIssue(e.target.value)} placeholder="描述問題（可留空，直接標示此處有誤）"
           className="w-full h-20 border rounded-lg p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300" autoFocus />
         <div className="flex justify-end gap-2 mt-3">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
-          <button onClick={() => { if (issue.trim()) onSave(issue.trim()); }} disabled={!issue.trim()}
-            className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-40 flex items-center gap-1"><Check className="w-3.5 h-3.5" />儲存</button>
+          <button onClick={() => onSave(issue.trim())}
+            className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-1"><Check className="w-3.5 h-3.5" />儲存</button>
         </div>
       </>) : (<>
         <div className="bg-red-50 rounded-lg p-2.5 text-sm text-gray-700 mb-3">{mark?.issue}</div>
@@ -3677,9 +3677,9 @@ export default function MdReviewer() {
     setEditingBlock(null);
   }, [activeFile, updateFile, pushHistory]);
 
-  const onBlockMark = useCallback((blockId, e) => {
+  const onBlockMark = useCallback((blockId, e, quote) => {
     if (!activeFile) return;
-    setPopup({ blockId, position: { x: e.clientX, y: e.clientY }, mark: activeFile.marks.find(m => m.blockId === blockId) });
+    setPopup({ blockId, position: { x: e.clientX, y: e.clientY }, mark: activeFile.marks.find(m => m.blockId === blockId), quote });
     setEditingBlock(null);
   }, [activeFile]);
 
@@ -3771,7 +3771,9 @@ export default function MdReviewer() {
   const saveMark = useCallback((issue) => {
     if (!popup || !activeFile) return;
     const ms = [...activeFile.marks]; const idx = ms.findIndex(m => m.blockId === popup.blockId);
-    if (idx >= 0) ms[idx] = { ...ms[idx], issue }; else ms.push({ blockId: popup.blockId, issue });
+    const patch = { blockId: popup.blockId, issue };
+    if (popup.quote) patch.quote = popup.quote;
+    if (idx >= 0) ms[idx] = { ...ms[idx], ...patch }; else ms.push(patch);
     updateFile(activeFile.id, { marks: ms }); setPopup(null);
   }, [popup, activeFile, updateFile]);
   const deleteMark = useCallback(() => {
