@@ -3413,6 +3413,7 @@ export default function MdReviewer() {
   const [showToc, setShowToc] = useState(false);
   const [showReleases, setShowReleases] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [selMark, setSelMark] = useState(null); // { x, y, blockId, quote } — select-text-to-mark
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -3953,6 +3954,7 @@ export default function MdReviewer() {
     .mark-flag{position:absolute;top:4px;right:6px;opacity:.28;transition:opacity .12s,border-color .12s,background .12s;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:0 6px;font-size:13px;line-height:1.7;cursor:pointer;z-index:6}
     .block-wrapper:hover .mark-flag{opacity:.92}
     .mark-flag:hover{opacity:1;border-color:#fca5a5;background:#fef2f2}
+    .sel-mark-btn{display:flex;align-items:center;gap:4px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:70;animation:ftIn .12s ease}
     .edit-block{padding:4px 0}
     .edit-block textarea{width:100%;padding:12px;border:1px solid var(--border2);border-radius:8px;resize:none;outline:none;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--surface);color:var(--text);box-shadow:none;transition:border .15s}
     .edit-block textarea:focus{border-color:var(--accent2)}
@@ -4428,7 +4430,18 @@ export default function MdReviewer() {
               </div>
             ) : (
               <div className="flex-1 flex" style={{minHeight:0,overflow:'hidden'}}>
-                <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0,padding:'clamp(8px,2%,16px)'}}>
+                <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0,padding:'clamp(8px,2%,16px)'}}
+                  onMouseUp={() => {
+                    const sel = window.getSelection();
+                    const text = sel && sel.toString().trim();
+                    if (!text || !sel.rangeCount) { setSelMark(null); return; }
+                    let node = sel.getRangeAt(0).commonAncestorContainer;
+                    node = node.nodeType === 3 ? node.parentElement : node;
+                    const blockEl = node && node.closest ? node.closest('[id^="block-"]') : null;
+                    if (!blockEl) { setSelMark(null); return; }
+                    const r = sel.getRangeAt(0).getBoundingClientRect();
+                    setSelMark({ x: r.left + r.width / 2, y: r.top, blockId: blockEl.id, quote: text.slice(0, 60) });
+                  }}>
                   <div className="doc-canvas">
                     <div className="text-xs text-gray-400 mb-4 flex items-center gap-4 pb-3 border-b border-dashed flex-wrap" data-tour="gestures">
                       <span>📝 單擊 → 編輯</span>
@@ -4497,6 +4510,14 @@ export default function MdReviewer() {
       </div>
 
       {popup&&<MarkPopup mark={popup.mark} position={popup.position} onSave={saveMark} onDelete={deleteMark} onClose={()=>setPopup(null)}/>}
+
+      {selMark && (
+        <button className="sel-mark-btn"
+          style={{ position:'fixed', left: Math.min(selMark.x, window.innerWidth-96), top: Math.max(selMark.y-42, 8) }}
+          onMouseDown={(e)=>e.preventDefault()}
+          onClick={() => { onBlockMark(selMark.blockId, { clientX: selMark.x, clientY: selMark.y }, selMark.quote); setSelMark(null); }}
+        >🚩 標記</button>
+      )}
       {showAdd&&<AddFileModal onAdd={addFile} onBatchAdd={batchAddFile} onClose={()=>setShowAdd(false)}/>}
 
       {showReleases && <ReleaseNotesModal releases={RELEASES} current={CURRENT_VERSION} onClose={closeReleases} />}
