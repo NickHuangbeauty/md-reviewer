@@ -3414,6 +3414,7 @@ export default function MdReviewer() {
   const [showReleases, setShowReleases] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [selMark, setSelMark] = useState(null); // { x, y, blockId, quote } — select-text-to-mark
+  const [copyToast, setCopyToast] = useState(null); // 'ok' | { text } (fallback)
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -3853,7 +3854,17 @@ export default function MdReviewer() {
     // Show modal to allow filename editing before download
     setDownloadModal({ file: f, name: f.name, type: 'md' });
   };
-  
+
+  const copyLlmPrompt = useCallback(async () => {
+    if (!activeFile || !activeFile.marks.length) return;
+    const text = buildLlmPrompt(activeFile.name, activeFile.content, activeFile.marks);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyToast('ok'); setTimeout(() => setCopyToast(c => (c === 'ok' ? null : c)), 1800);
+    } catch { setCopyToast({ text }); }
+  }, [activeFile]);
+
   const confirmDownload = (name) => {
     if (!downloadModal) return;
     
@@ -3955,6 +3966,7 @@ export default function MdReviewer() {
     .block-wrapper:hover .mark-flag{opacity:.92}
     .mark-flag:hover{opacity:1;border-color:#fca5a5;background:#fef2f2}
     .sel-mark-btn{display:flex;align-items:center;gap:4px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:70;animation:ftIn .12s ease}
+    .copy-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:12.5px;font-weight:600;z-index:140;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:ftIn .15s ease}
     .edit-block{padding:4px 0}
     .edit-block textarea{width:100%;padding:12px;border:1px solid var(--border2);border-radius:8px;resize:none;outline:none;font-family:var(--mono);font-size:13px;line-height:1.75;background:var(--surface);color:var(--text);box-shadow:none;transition:border .15s}
     .edit-block textarea:focus{border-color:var(--accent2)}
@@ -4343,6 +4355,7 @@ export default function MdReviewer() {
             <button onClick={() => importRef.current?.click()} className="tbtn tbtn-gray" title="匯入先前備份的審核狀態 (.json 檔案)"><FileUp className="w-3.5 h-3.5" />匯入狀態</button>
             <button onClick={doExport} disabled={!files.length} className="tbtn tbtn-gray" title="匯出目前的審核進度並下載備份 (.json 檔案)"><FileDown className="w-3.5 h-3.5" />匯出狀態</button>
             <div className="w-px h-5 bg-gray-200 mx-1" />
+            <button onClick={copyLlmPrompt} disabled={!activeFile || !activeFile.marks.length} className="tbtn tbtn-violet" title="複製給 LLM review 的提示詞（含標記與內文）"><Clipboard className="w-3.5 h-3.5" />複製 LLM 提示</button>
             <button onClick={() => { if (activeFile) downloadFile(activeFile); }} data-tour="download" disabled={!activeFile} className="tbtn tbtn-blue" title="下載 .md(含標記)"><Download className="w-3.5 h-3.5" />下載 MD</button>
             <button onClick={downloadZip} disabled={!doneCount} className="tbtn tbtn-green" title="ZIP 下載已完成檔案"><FolderDown className="w-3.5 h-3.5" />全部 ZIP ({doneCount})</button>
           </div>
@@ -4517,6 +4530,16 @@ export default function MdReviewer() {
           onMouseDown={(e)=>e.preventDefault()}
           onClick={() => { onBlockMark(selMark.blockId, { clientX: selMark.x, clientY: selMark.y }, selMark.quote); setSelMark(null); }}
         >🚩 標記</button>
+      )}
+
+      {copyToast === 'ok' && <div className="copy-toast">已複製 LLM 提示 ✓</div>}
+      {copyToast && copyToast.text && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center" style={{background:'rgba(0,0,0,.5)'}} onClick={()=>setCopyToast(null)}>
+          <div className="rn-panel" onClick={e=>e.stopPropagation()} style={{padding:16}}>
+            <div className="flex items-center justify-between mb-2"><b style={{color:'var(--text)'}}>手動複製 LLM 提示</b><button className="rn-x" onClick={()=>setCopyToast(null)} aria-label="關閉"><X className="w-4 h-4"/></button></div>
+            <textarea readOnly value={copyToast.text} onFocus={e=>e.target.select()} style={{width:'100%',height:220,fontSize:12,fontFamily:'var(--mono)',background:'var(--surface2)',color:'var(--text)',border:'1px solid var(--border2)',borderRadius:8,padding:8}} />
+          </div>
+        </div>
       )}
       {showAdd&&<AddFileModal onAdd={addFile} onBatchAdd={batchAddFile} onClose={()=>setShowAdd(false)}/>}
 
