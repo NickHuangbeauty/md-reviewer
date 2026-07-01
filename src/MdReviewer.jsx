@@ -466,13 +466,14 @@ function MarkPopup({ mark, position, onSave, onDelete, onClose }) {
     return () => document.removeEventListener('mousedown', fn);
   }, [onClose]);
   return (
-    <div ref={ref} style={{ position:'fixed', left: Math.min(position.x, window.innerWidth-290), top: Math.min(position.y+10, window.innerHeight-220), width:270, background:'white', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.2)', border:'1px solid #fecaca', padding:16, zIndex:50 }}>
+    <div ref={ref} style={{ position:'fixed', left: Math.min(position.x, window.innerWidth-290), top: Math.min(position.y+10, window.innerHeight-220), width:270, background:'var(--surface)', color:'var(--text)', borderRadius:12, boxShadow:'0 20px 60px rgba(0,0,0,0.28)', border:'1px solid var(--border2)', padding:16, zIndex:50 }}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-red-600 flex items-center gap-1.5"><AlertCircle className="w-4 h-4" />{mark ? '問題標記' : '新增標記'}</span>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
       </div>
       {editing ? (<>
         <textarea value={issue} onChange={e => setIssue(e.target.value)} placeholder="描述問題（可留空，直接標示此處有誤）"
+          style={{ background:'var(--surface2)', color:'var(--text)', borderColor:'var(--border2)' }}
           className="w-full h-20 border rounded-lg p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300" autoFocus />
         <div className="flex justify-end gap-2 mt-3">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
@@ -480,7 +481,7 @@ function MarkPopup({ mark, position, onSave, onDelete, onClose }) {
             className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-1"><Check className="w-3.5 h-3.5" />儲存</button>
         </div>
       </>) : (<>
-        <div className="bg-red-50 rounded-lg p-2.5 text-sm text-gray-700 mb-3">{mark?.issue}</div>
+        <div className="rounded-lg p-2.5 text-sm mb-3" style={{ background:'var(--surface2)', color: mark?.issue ? 'var(--text)' : 'var(--text3)' }}>{mark?.issue || '（未填述，此處標示有誤）'}</div>
         <div className="flex justify-end gap-2">
           <button onClick={() => setEditing(true)} className="px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-1"><Edit className="w-3 h-3" />修改</button>
           <button onClick={onDelete} className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"><Trash2 className="w-3 h-3" />刪除</button>
@@ -2993,7 +2994,7 @@ function DashboardOverview({ files, allStats, computing, onSelectFile, onClose }
   );
 }
 
-function SourceEditor({ value, onChange }) {
+function SourceEditor({ value, onChange, readOnly }) {
   const textareaRef = useRef(null);
   const gutterRef = useRef(null);
   const lineCount = useMemo(() => (value || '').split('\n').length, [value]);
@@ -3014,10 +3015,11 @@ function SourceEditor({ value, onChange }) {
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => { if (!readOnly) onChange(e.target.value); }}
         onScroll={syncScroll}
         className="source-editor"
         spellCheck={false}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -3416,6 +3418,7 @@ export default function MdReviewer() {
   const [showTour, setShowTour] = useState(false);
   const [selMark, setSelMark] = useState(null); // { x, y, blockId, quote } — select-text-to-mark
   const [copyToast, setCopyToast] = useState(null); // 'ok' | { text } (fallback)
+  const [srcShowMarks, setSrcShowMarks] = useState(true); // 原始碼: show annotated (marks) vs editable clean
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -4022,6 +4025,9 @@ export default function MdReviewer() {
     .source-gutter{overflow:hidden;padding:24px 0;background:#0d1117;border-right:1px solid #21262d;user-select:none;flex-shrink:0;min-width:48px}
     .source-gutter-line{font-family:var(--mono);font-size:13px;line-height:1.75;color:#484f58;text-align:right;padding:0 12px 0 12px}
     .source-editor{width:100%;height:100%;padding:24px 24px 24px 16px;font-family:var(--mono);font-size:13px;line-height:1.75;border:none;resize:none;outline:none;background:#0d1117;color:#e6edf3;min-height:0}
+    .src-mark-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
+    .src-mark-toggle{font-size:11.5px;font-weight:600;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-border);border-radius:7px;padding:3px 10px;cursor:pointer;transition:all .12s}
+    .src-mark-toggle:hover{background:var(--accent);color:#fff}
     .dash-container{padding:24px 32px;max-width:960px;margin:0 auto}
     .dash-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
     .dash-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:var(--text)}
@@ -4436,7 +4442,19 @@ export default function MdReviewer() {
             </div>
 
             {viewMode==='source' ? (
+              (activeFile.marks.length > 0) ? (
+                <div className="flex-1 flex flex-col" style={{minHeight:0}}>
+                  <div className="src-mark-bar">
+                    <span className="flex items-center gap-1.5" style={{color:'var(--text2)'}}><AlertCircle className="w-3.5 h-3.5" style={{color:'var(--danger)'}} />此檔有 {activeFile.marks.length} 個標記{srcShowMarks ? '，已寫入下方註解（唯讀預覽）' : ''}</span>
+                    <button onClick={()=>setSrcShowMarks(v=>!v)} className="src-mark-toggle">{srcShowMarks ? '編輯原始碼（隱藏標記）' : '顯示標記註解'}</button>
+                  </div>
+                  {srcShowMarks
+                    ? <SourceEditor value={buildAnnotatedMd(activeFile.content, activeFile.marks)} readOnly />
+                    : <SourceEditor value={activeFile.content} onChange={val=>updateFile(activeFile.id,{content:val})} />}
+                </div>
+              ) : (
               <SourceEditor value={activeFile.content} onChange={val=>updateFile(activeFile.id,{content:val})} />
+              )
 
             ) : viewMode==='diff' ? (
               <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0}}>
