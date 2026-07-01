@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History, GraduationCap } from 'lucide-react';
 import { RELEASES, CURRENT_VERSION } from './releases.js';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
@@ -2534,6 +2534,91 @@ function ReleaseNotesModal({ releases, current, onClose }) {
   );
 }
 
+// Guided onboarding tour steps. sel = CSS selector of the real element to spotlight
+// (null = centered card). Elements are tagged with data-tour="..." in the header/sidebar/canvas.
+const TOUR_STEPS = [
+  { sel: null, title: '歡迎使用 MD 批次審核 👋', body: '這是給業務單位比對 RAG 解析後的 Markdown 與原始文件的工具。我用 30 秒帶你看一遍，隨時可以按「略過」離開。' },
+  { sel: '[data-tour="add-file"]', title: '① 新增檔案', body: '點這顆藍色 ＋ 上傳或貼上要審核的 Markdown / HTML。也可以一次貼多個檔案批次匯入。' },
+  { sel: '[data-tour="file-item"]', title: '② 切換與完成', body: '左側清單點檔名切換文件；看完後點左邊圓圈打勾標記完成，最下方會顯示整體進度。' },
+  { sel: '[data-tour="view-tabs"]', title: '③ 三種檢視', body: '預覽編輯＝所見即所得地改；原始碼＝直接看 MD/HTML；差異比對＝跟原始文件逐行比對哪裡不一樣。' },
+  { sel: '[data-tour="gestures"]', title: '④ 在預覽裡直接改', body: '單擊文字＝編輯，雙擊＝加審核標記，選取文字＝跳出格式工具列，表格可框選儲存格合併／分割。改的內容會同步寫回 MD 原始檔。' },
+  { sel: '[data-tour="download"]', title: '⑤ 下載與備份', body: '改完點「下載 MD」拿到含標記的檔案；「匯出狀態」可備份整個審核進度，下次用「匯入狀態」接續。' },
+  { sel: '.ver-badge', title: '⑥ 更新日誌', body: '右上角版號點下去，可以看每個版本改了什麼、新增了什麼功能。' },
+  { sel: null, title: '完成 🎉', body: '就這些！左側那份「示範文件」可以隨時用「移除」刪掉。之後想重看，右上角「使用教學」隨時再帶你一次。' },
+];
+
+// Spotlight guided tour — dims the screen, highlights each real element with a bubble.
+// Hand-rolled (no dependency); matches the app's CSS-var theming.
+function TourGuide({ steps, onClose }) {
+  const [i, setI] = useState(0);
+  const [rect, setRect] = useState(null);
+  const step = steps[i];
+  const last = i === steps.length - 1;
+  const next = useCallback(() => setI(v => (v < steps.length - 1 ? v + 1 : v)), [steps.length]);
+  const prev = useCallback(() => setI(v => Math.max(0, v - 1)), []);
+
+  // Measure the target (with retries — it may still be mounting, e.g. after a demo file loads).
+  useLayoutEffect(() => {
+    let raf, tries = 0, alive = true;
+    const measure = () => {
+      if (!alive) return;
+      if (!step.sel) { setRect(null); return; }
+      const el = document.querySelector(step.sel);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (r.width || r.height) { setRect({ top: r.top, left: r.left, width: r.width, height: r.height }); return; }
+      }
+      if (tries++ < 30) raf = requestAnimationFrame(measure); else setRect(null);
+    };
+    measure();
+    const onWin = () => { const el = step.sel && document.querySelector(step.sel); const r = el && el.getBoundingClientRect(); setRect(r && (r.width || r.height) ? { top: r.top, left: r.left, width: r.width, height: r.height } : null); };
+    window.addEventListener('resize', onWin);
+    window.addEventListener('scroll', onWin, true);
+    return () => { alive = false; cancelAnimationFrame(raf); window.removeEventListener('resize', onWin); window.removeEventListener('scroll', onWin, true); };
+  }, [step.sel]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); else if (e.key === 'ArrowRight') { last ? onClose() : next(); } else if (e.key === 'ArrowLeft') prev(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [last, next, prev, onClose]);
+
+  const PAD = 6, BW = 320;
+  const box = rect ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 } : null;
+  let bubble;
+  if (!box) bubble = { top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: BW };
+  else {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = Math.min(Math.max(box.left, 12), Math.max(12, vw - BW - 12));
+    const below = box.top + box.height + 12;
+    const roomBelow = vh - (box.top + box.height);
+    bubble = roomBelow > 200 ? { top: below, left, width: BW } : { top: undefined, bottom: Math.max(12, vh - box.top + 12), left, width: BW };
+  }
+
+  return (
+    <div className="tour-root" onClick={(e) => { if (e.target.classList.contains('tour-root')) { /* ignore stray clicks on dim */ } }}>
+      {box
+        ? <div className="tour-spot" style={{ top: box.top, left: box.left, width: box.width, height: box.height }} />
+        : <div className="tour-dim" />}
+      <div className="tour-bubble" style={bubble}>
+        <div className="tour-topline">
+          <span className="tour-count">{i + 1} / {steps.length}</span>
+          <button className="tour-x" onClick={onClose} aria-label="關閉教學"><X className="w-3.5 h-3.5" /></button>
+        </div>
+        <h4 className="tour-title">{step.title}</h4>
+        <p className="tour-body">{step.body}</p>
+        <div className="tour-actions">
+          <button className="tour-skip" onClick={onClose}>略過</button>
+          <div className="flex items-center gap-2">
+            {i > 0 && <button className="tour-btn ghost" onClick={prev}>上一步</button>}
+            <button className="tour-btn" onClick={() => (last ? onClose() : next())}>{last ? '完成' : '下一步'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Virtual scrolling component for large diffs
 function VirtualDiffList({ items, mode, isCalculating, progress, manualMode, needsRefresh, onRefresh, onExpandFold }) {
   const containerRef = useRef(null);
@@ -3446,6 +3531,7 @@ export default function MdReviewer() {
   const [mermaidThemeVer, setMermaidThemeVer] = useState(0);
   const [showToc, setShowToc] = useState(false);
   const [showReleases, setShowReleases] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -3491,6 +3577,7 @@ export default function MdReviewer() {
       setTheme: (t) => { if (t === 'dark' || t === 'light') setTheme(t); },
       version: CURRENT_VERSION,
       openReleaseNotes: () => setShowReleases(true),
+      startTutorial: () => startTour(),
     };
     return () => { delete window.mdReviewer; };
   }, [importFiles]);
@@ -3509,6 +3596,31 @@ export default function MdReviewer() {
     setShowReleases(false);
     try { localStorage.setItem(SEEN_VERSION_KEY, CURRENT_VERSION); } catch { /* ignore */ }
   }, []);
+
+  // === Guided tour (使用教學) ===
+  const TOUR_SEEN_KEY = 'md-reviewer-tour-seen';
+  const TOUR_DEMO = '# 火災保險投保須知（示範文件）\n\n本文件為教學示範，可隨時在左側清單「移除」。\n\n## 承保範圍\n\n| 項目 | 說明 |\n| --- | --- |\n| 建築物 | 主體結構、裝潢 |\n| 動產 | 室內設備、存貨 |\n\n- 保險金額不得超過重置成本\n- 理賠採實損實賠原則\n';
+  const startTour = useCallback(() => {
+    setShowReleases(false);
+    setShowDashboard(false);
+    if (filesRef.current.length === 0) importFiles([{ name: '示範文件.md', content: TOUR_DEMO }]);
+    setViewMode('preview');
+    setShowTour(true);
+  }, [importFiles]);
+  const closeTour = useCallback(() => {
+    setShowTour(false);
+    try { localStorage.setItem(TOUR_SEEN_KEY, '1'); } catch { /* ignore */ }
+  }, []);
+  // Auto-start once for brand-new users (no prior visit recorded). Gated purely on
+  // localStorage so StrictMode's double-invoke (which clears then reschedules the timer)
+  // still results in exactly one launch.
+  useEffect(() => {
+    let seen = false;
+    try { seen = !!localStorage.getItem(TOUR_SEEN_KEY); } catch { seen = true; }
+    if (seen) return;
+    const t = setTimeout(() => startTour(), 700);
+    return () => clearTimeout(t);
+  }, [startTour]);
 
   // === P1: URL param support (?theme=dark&mode=embed) ===
   const [embedMode, setEmbedMode] = useState(false);
@@ -3988,6 +4100,24 @@ export default function MdReviewer() {
     .rn-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
     .rn-list li{font-size:12.5px;line-height:1.55;color:var(--text2);position:relative;padding-left:13px}
     .rn-list li::before{content:'';position:absolute;left:2px;top:8px;width:4px;height:4px;border-radius:50%;background:var(--text3)}
+    /* guided tour (使用教學) */
+    .tour-root{position:fixed;inset:0;z-index:200}
+    .tour-dim{position:fixed;inset:0;background:rgba(15,17,21,.62)}
+    .tour-spot{position:fixed;border-radius:9px;box-shadow:0 0 0 3px var(--accent),0 0 0 9999px rgba(15,17,21,.62);pointer-events:none;transition:top .28s cubic-bezier(.4,0,.2,1),left .28s cubic-bezier(.4,0,.2,1),width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1)}
+    .tour-bubble{position:fixed;z-index:3;box-sizing:border-box;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.3);padding:15px 16px 14px;font-family:var(--font)}
+    .tour-topline{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+    .tour-count{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-border);padding:1px 8px;border-radius:999px}
+    .tour-x{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;color:var(--text3);cursor:pointer;border:none;background:transparent;transition:all .12s}
+    .tour-x:hover{background:var(--surface2);color:var(--text)}
+    .tour-title{font-size:14.5px;font-weight:700;color:var(--text);margin:0 0 5px}
+    .tour-body{font-size:12.5px;line-height:1.6;color:var(--text2);margin:0 0 14px}
+    .tour-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .tour-skip{font-size:12px;color:var(--text3);background:transparent;border:none;cursor:pointer;padding:6px 4px}
+    .tour-skip:hover{color:var(--text2)}
+    .tour-btn{font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;transition:all .12s}
+    .tour-btn:hover{filter:brightness(1.06)}
+    .tour-btn.ghost{background:transparent;color:var(--text2);border-color:var(--border2)}
+    .tour-btn.ghost:hover{background:var(--surface2);color:var(--text)}
     .source-gutter{overflow:hidden;padding:24px 0;background:#0d1117;border-right:1px solid #21262d;user-select:none;flex-shrink:0;min-width:48px}
     .source-gutter-line{font-family:var(--mono);font-size:13px;line-height:1.75;color:#484f58;text-align:right;padding:0 12px 0 12px}
     .source-editor{width:100%;height:100%;padding:24px 24px 24px 16px;font-family:var(--mono);font-size:13px;line-height:1.75;border:none;resize:none;outline:none;background:#0d1117;color:#e6edf3;min-height:0}
@@ -4306,12 +4436,15 @@ export default function MdReviewer() {
             <div><h1 style={{fontSize:15,fontWeight:700,color:'var(--text)',letterSpacing:'-.01em'}}>MD 批次審核</h1><p style={{fontSize:11,color:'var(--text2)',marginTop:1}}>{files.length} 個檔案 · {doneCount} 已完成</p></div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button onClick={startTour} className="tbtn tbtn-gray" title="使用教學 — 帶你走一遍操作步驟">
+              <GraduationCap className="w-3.5 h-3.5" />使用教學
+            </button>
             <button onClick={() => setShowReleases(true)} className="ver-badge" title="更新日誌 / 版本資訊">
               <Sparkles className="w-3 h-3" />v{CURRENT_VERSION}
             </button>
             <div className="w-px h-5 bg-gray-200 mx-1" />
             {flagDarkMode && (<>
-              <button onClick={toggleTheme} className="tbtn tbtn-gray" title={theme === 'light' ? '切換深色模式' : '切換淺色模式'} aria-label="切換主題">
+              <button onClick={toggleTheme} data-tour="theme" className="tbtn tbtn-gray" title={theme === 'light' ? '切換深色模式' : '切換淺色模式'} aria-label="切換主題">
                 {theme === 'light' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
               </button>
               <div className="w-px h-5 bg-gray-200 mx-1" />
@@ -4322,7 +4455,7 @@ export default function MdReviewer() {
             <button onClick={() => importRef.current?.click()} className="tbtn tbtn-gray" title="匯入先前備份的審核狀態 (.json 檔案)"><FileUp className="w-3.5 h-3.5" />匯入狀態</button>
             <button onClick={doExport} disabled={!files.length} className="tbtn tbtn-gray" title="匯出目前的審核進度並下載備份 (.json 檔案)"><FileDown className="w-3.5 h-3.5" />匯出狀態</button>
             <div className="w-px h-5 bg-gray-200 mx-1" />
-            <button onClick={() => { if (activeFile) downloadFile(activeFile); }} disabled={!activeFile} className="tbtn tbtn-blue" title="下載 .md(含標記)"><Download className="w-3.5 h-3.5" />下載 MD</button>
+            <button onClick={() => { if (activeFile) downloadFile(activeFile); }} data-tour="download" disabled={!activeFile} className="tbtn tbtn-blue" title="下載 .md(含標記)"><Download className="w-3.5 h-3.5" />下載 MD</button>
             <button onClick={downloadZip} disabled={!doneCount} className="tbtn tbtn-green" title="ZIP 下載已完成檔案"><FolderDown className="w-3.5 h-3.5" />全部 ZIP ({doneCount})</button>
           </div>
         </div>
@@ -4334,20 +4467,20 @@ export default function MdReviewer() {
         <div className="bg-white border-r flex flex-col" style={{width:'clamp(180px, 20%, 240px)',minWidth:180,maxWidth:240,flexShrink:0}}>
           <div className="px-3 py-2.5 border-b flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">檔案清單</span>
-            <button onClick={() => setShowAdd(true)} className="w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"><Plus className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setShowAdd(true)} data-tour="add-file" className="w-6 h-6 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"><Plus className="w-3.5 h-3.5" /></button>
           </div>
           <div className="flex-1 overflow-y-auto">
             {!sortedFiles.length && <div className="p-6 text-center"><Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" /><p className="text-xs text-gray-400">點擊 + 新增檔案</p></div>}
             {sortedFiles.filter(f=>f.status==='pending').length>0 && <div className="px-3 py-1.5 text-xs text-gray-400 font-medium bg-gray-50 border-b">待審核 ({sortedFiles.filter(f=>f.status==='pending').length})</div>}
             {sortedFiles.filter(f=>f.status==='pending').map(f=>(
-              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
+              <div key={f.id} data-tour="file-item" onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
                 <button onClick={e=>{e.stopPropagation();toggleDone(f.id)}} className="text-gray-300 hover:text-green-500 shrink-0"><Circle className="w-4 h-4"/></button>
                 <span className="text-xs text-gray-700 truncate flex-1">{f.name}</span>
                 {f.marks.length>0&&<span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">{f.marks.length}</span>}
               </div>))}
             {sortedFiles.filter(f=>f.status==='done').length>0 && <div className="px-3 py-1.5 text-xs text-gray-400 font-medium bg-green-50 border-b">已完成 ({sortedFiles.filter(f=>f.status==='done').length})</div>}
             {sortedFiles.filter(f=>f.status==='done').map(f=>(
-              <div key={f.id} onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
+              <div key={f.id} data-tour="file-item" onClick={()=>{setActiveId(f.id);setEditingBlock(null);setViewMode('preview');setShowDashboard(false)}} className={'si flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-gray-50 '+(activeId===f.id?'act':'')}>
                 <button onClick={e=>{e.stopPropagation();toggleDone(f.id)}} className="text-green-500 hover:text-gray-400 shrink-0"><CheckCircle2 className="w-4 h-4"/></button>
                 <span className="text-xs text-gray-500 truncate flex-1 line-through">{f.name}</span>
                 {f.marks.length>0&&<span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">{f.marks.length}</span>}
@@ -4377,7 +4510,7 @@ export default function MdReviewer() {
                 {activeFile.marks.length>0&&<span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">{activeFile.marks.length} 個標記</span>}
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex bg-gray-100 rounded-lg p-0.5">
+                <div className="flex bg-gray-100 rounded-lg p-0.5" data-tour="view-tabs">
                   <button onClick={()=>{setViewMode('preview');setEditingBlock(null)}} className={'px-2.5 py-1 text-xs rounded-md font-medium transition-colors '+(viewMode==='preview'?'bg-white text-gray-800 shadow-sm':'text-gray-500')}>
                     <span className="flex items-center gap-1"><Eye className="w-3 h-3"/>預覽編輯</span></button>
                   <button onClick={()=>setViewMode('source')} className={'px-2.5 py-1 text-xs rounded-md font-medium transition-colors '+(viewMode==='source'?'bg-white text-gray-800 shadow-sm':'text-gray-500')}>
@@ -4411,7 +4544,7 @@ export default function MdReviewer() {
               <div className="flex-1 flex" style={{minHeight:0,overflow:'hidden'}}>
                 <div className="flex-1 overflow-auto" style={{background:'var(--surface)',minWidth:0,padding:'clamp(8px,2%,16px)'}}>
                   <div className="doc-canvas">
-                    <div className="text-xs text-gray-400 mb-4 flex items-center gap-4 pb-3 border-b border-dashed flex-wrap">
+                    <div className="text-xs text-gray-400 mb-4 flex items-center gap-4 pb-3 border-b border-dashed flex-wrap" data-tour="gestures">
                       <span>📝 單擊 → 編輯</span>
                       <span>🔴 雙擊 → 標記</span>
                       <span>⌨️ 選取文字 → 浮動工具列</span>
@@ -4481,6 +4614,8 @@ export default function MdReviewer() {
       {showAdd&&<AddFileModal onAdd={addFile} onBatchAdd={batchAddFile} onClose={()=>setShowAdd(false)}/>}
 
       {showReleases && <ReleaseNotesModal releases={RELEASES} current={CURRENT_VERSION} onClose={closeReleases} />}
+
+      {showTour && <TourGuide steps={TOUR_STEPS} onClose={closeTour} />}
 
       {/* Download Modal */}
       {downloadModal && (
