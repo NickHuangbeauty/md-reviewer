@@ -5,7 +5,9 @@ import { splitMdBlocks, joinMdBlocks } from './mdBlocks.js';
 
 const EMPTY_ISSUE = '（未填述，BU 標示此處有誤）';
 
-export function escapeComment(s) { return (s || '').replace(/-->/g, '—>'); }
+// Neutralize every HTML-comment terminator so user text can't break out of the
+// <!-- ... --> wrapper. Both '-->' and '--!>' close a comment per the HTML spec.
+export function escapeComment(s) { return (s || '').replace(/--!?>/g, '—>'); }
 
 // A short, human-readable excerpt of a block for anchoring an annotation.
 export function blockQuote(blockText, max = 24) {
@@ -38,37 +40,38 @@ export function buildAnnotatedMd(content, marks) {
   const byBlock = markNumberMap(marks);
   const maxIdx = blocks.length - 1;
 
-  // Global 1-based numbering in block order, then orphans (out-of-range blockId).
+  // Single pass: assign the global 1-based number as each mark is emitted, so the
+  // inline annotation and the summary line always carry the same #n (no identity
+  // lookup that could desync if a mark object ref repeats).
   let n = 0;
-  const numbered = []; // { mark, blockText, num }
-  blocks.forEach((b, bi) => {
-    (byBlock['block-' + bi] || []).forEach(m => { n += 1; numbered.push({ mark: m, blockText: b, num: n }); });
-  });
-  marks.forEach(m => {
-    const mi = /^block-(\d+)$/.exec(m.blockId || '');
-    if (!mi || parseInt(mi[1], 10) > maxIdx) { n += 1; numbered.push({ mark: m, blockText: '', num: n }); }
-  });
-
-  const summary = numbered.map(x => `    #${x.num}「${quoteOf(x.mark, x.blockText)}」— ${issueOf(x.mark)}`).join('\n');
-
-  const header =
-`<!-- ═══ 審核回饋｜給 LLM 的說明 ═══
-  本檔含 ${numbered.length} 處 BU 標記，格式 [審核問題 #n]，置於所指段落正下方。
-  請逐條產出問題清單報告，欄位：編號／位置(第幾段)／原文摘錄／問題描述／建議修正／嚴重度。
-  只依標記與內文判斷，不要杜撰。
-  問題總表：
-${summary}
-═══════════════════════════ -->`;
-
+  const summaryLines = [];
   const out = [];
   blocks.forEach((b, bi) => {
     out.push(b);
     (byBlock['block-' + bi] || []).forEach(m => {
-      const num = numbered.find(x => x.mark === m).num;
-      out.push(annotationLine(m, b, num));
+      n += 1;
+      out.push(annotationLine(m, b, n));
+      summaryLines.push(`    #${n}「${quoteOf(m, b)}」— ${issueOf(m)}`);
     });
   });
-  numbered.filter(x => x.blockText === '').forEach(x => out.push(annotationLine(x.mark, '', x.num)));
+  // Orphan marks (blockId out of range / not 'block-<n>') appended at the end.
+  marks.forEach(m => {
+    const mi = /^block-(\d+)$/.exec(m.blockId || '');
+    if (!mi || parseInt(mi[1], 10) > maxIdx) {
+      n += 1;
+      out.push(annotationLine(m, '', n));
+      summaryLines.push(`    #${n}「${quoteOf(m, '')}」— ${issueOf(m)}`);
+    }
+  });
+
+  const header =
+`<!-- ═══ 審核回饋｜給 LLM 的說明 ═══
+  本檔含 ${n} 處 BU 標記，格式 [審核問題 #n]，置於所指段落正下方。
+  請逐條產出問題清單報告，欄位：編號／位置(第幾段)／原文摘錄／問題描述／建議修正／嚴重度。
+  只依標記與內文判斷，不要杜撰。
+  問題總表：
+${summaryLines.join('\n')}
+═══════════════════════════ -->`;
 
   return header + '\n\n' + joinMdBlocks(out);
 }

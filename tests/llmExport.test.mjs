@@ -32,6 +32,24 @@ console.log('buildAnnotatedMd:');
   const out = buildAnnotatedMd('para', marks);
   check('escapes --> in issue', out.includes('a —> b') && !/問題:a --> b/.test(out));
 }
+{
+  // M1: --!> is also a comment terminator — must be neutralized so <script> stays inert
+  const marks = [{ blockId: 'block-0', issue: 'evil --!> <script>x</script>' }];
+  const out = buildAnnotatedMd('para', marks);
+  check('escapes --!> terminator', !out.includes('--!>') && out.includes('—>'));
+}
+{
+  // H1: two distinct marks on the same block → inline #1 and #2 must match the summary
+  const marks = [{ blockId: 'block-0', issue: '第一' }, { blockId: 'block-0', issue: '第二' }];
+  const out = buildAnnotatedMd('只有一段', marks);
+  check('two marks same block get #1 and #2 inline', /#1\][^\n]*第一 -->/.test(out) && /#2\][^\n]*第二 -->/.test(out));
+  check('count in header is 2', out.includes('本檔含 2 處'));
+}
+{
+  // orphan mark (blockId out of range) still appears, numbered, at the end
+  const out = buildAnnotatedMd('一段', [{ blockId: 'block-99', issue: '孤兒' }]);
+  check('orphan mark rendered and numbered', /#1\][^\n]*孤兒 -->/.test(out) && out.includes('本檔含 1 處'));
+}
 
 console.log('buildLlmPrompt:');
 check('null when no marks', buildLlmPrompt('f.md', 'X', []) === null);
