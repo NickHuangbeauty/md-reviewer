@@ -58,6 +58,15 @@ check('null when no marks', buildLlmPrompt('f.md', 'X', []) === null);
   check('prompt has instruction preamble', /問題清單/.test(p) && p.includes('不要杜撰'));
   check('prompt embeds annotated md', p.includes('[審核問題 #1]'));
   check('prompt names the file', p.includes('f.md'));
+  check('prompt is domain-general (no 產險/BU)', !p.includes('產險') && !p.includes('業務單位') && !/BU/.test(p));
+  check('prompt de-dupes: has 問題總表 but NOT the full 給 LLM 的說明 header', p.includes('問題總表') && !p.includes('給 LLM 的說明'));
+}
+{
+  // standalone download keeps the full explanatory header
+  const md = buildAnnotatedMd('A\n\nB', [{ blockId: 'block-1', issue: 'bad' }]);
+  check('download (full) keeps 給 LLM 的說明', md.includes('給 LLM 的說明'));
+  const summ = buildAnnotatedMd('A\n\nB', [{ blockId: 'block-1', issue: 'bad' }], { header: 'summary' });
+  check('summary mode: 問題總表 only, no instructions', summ.includes('問題總表') && !summ.includes('給 LLM 的說明'));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
