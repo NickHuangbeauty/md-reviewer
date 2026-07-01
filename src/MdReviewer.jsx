@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History, GraduationCap } from 'lucide-react';
 import { RELEASES, CURRENT_VERSION } from './releases.js';
+import { splitMdBlocks, joinMdBlocks } from './mdBlocks.js';
+import { buildAnnotatedMd, buildLlmPrompt } from './llmExport.js';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
@@ -31,120 +33,6 @@ function safeLinkHref(url) {
 }
 
 
-/* ===== MD BLOCK SPLITTER ===== */
-function splitMdBlocks(text) {
-  if (!text) return [];
-  const lines = text.split('\n');
-  const blocks = [];
-  let buf = [];
-  let inHtmlTable = false;
-  let inMdTable = false;
-  let inCodeFence = false;
-  let inHtmlDiv = false;
-  let inMathFence = false;
-  // Running tag-balance counters — avoid re-joining + re-scanning the whole
-  // buffer on every line inside an HTML table/div (was O(H^2) per block).
-  let tableOpens = 0, tableCloses = 0, divOpens = 0, divCloses = 0;
-
-  const flush = () => {
-    if (buf.length) {
-      const raw = buf.join('\n');
-      if (raw.trim()) blocks.push(raw);
-      buf = [];
-    }
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    const t = l.trim();
-
-    // Code fence ``` ... ```
-    if (t.startsWith('```')) {
-      if (!inCodeFence) {
-        flush(); inCodeFence = true; buf.push(l);
-      } else {
-        buf.push(l); inCodeFence = false; flush();
-      }
-      continue;
-    }
-    if (inCodeFence) { buf.push(l); continue; }
-
-    // Display math fence $$ ... $$ — keep the whole block (incl. blank lines)
-    // together so KaTeX can pair the delimiters. Without this, a blank line or
-    // the per-line split scatters $$ across separate <p> blocks and it never renders.
-    if (t.startsWith('$$')) {
-      if (!inMathFence) {
-        const rest = t.slice(2).trim();
-        // Self-contained single-line block: "$$ ... $$"
-        if (rest.endsWith('$$') && rest.length >= 2) { flush(); buf.push(l); flush(); continue; }
-        flush(); inMathFence = true; buf.push(l); continue;
-      } else {
-        buf.push(l); inMathFence = false; flush(); continue;
-      }
-    }
-    if (inMathFence) { buf.push(l); continue; }
-
-    // HTML table — running tag-balance counters (O(1) per line)
-    if (!inHtmlTable && /<table/i.test(t)) {
-      flush(); inHtmlTable = true;
-      tableOpens = (l.match(/<table/gi) || []).length;
-      tableCloses = (l.match(/<\/table>/gi) || []).length;
-      buf.push(l);
-      if (tableCloses >= tableOpens) { inHtmlTable = false; flush(); }
-      continue;
-    }
-    if (inHtmlTable) {
-      buf.push(l);
-      tableOpens += (l.match(/<table/gi) || []).length;
-      tableCloses += (l.match(/<\/table>/gi) || []).length;
-      if (tableCloses >= tableOpens) { inHtmlTable = false; flush(); }
-      continue;
-    }
-
-    // HTML div block — running counters as above
-    if (!inHtmlDiv && /^<div[\s>]/i.test(t)) {
-      flush(); inHtmlDiv = true;
-      divOpens = (l.match(/<div[\s>]/gi) || []).length;
-      divCloses = (l.match(/<\/div>/gi) || []).length;
-      buf.push(l);
-      if (divCloses >= divOpens) { inHtmlDiv = false; flush(); }
-      continue;
-    }
-    if (inHtmlDiv) {
-      buf.push(l);
-      divOpens += (l.match(/<div[\s>]/gi) || []).length;
-      divCloses += (l.match(/<\/div>/gi) || []).length;
-      if (divCloses >= divOpens) { inHtmlDiv = false; flush(); }
-      continue;
-    }
-
-    // MD table
-    if (t.startsWith('|') && t.includes('|')) {
-      if (!inMdTable) { flush(); inMdTable = true; }
-      buf.push(l); continue;
-    } else if (inMdTable) { inMdTable = false; flush(); }
-
-    if (/^#{1,6}\s/.test(t)) { flush(); buf.push(l); flush(); continue; }
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { flush(); buf.push(l); flush(); continue; }
-    if (!t) { flush(); continue; }
-    if (/^[-*+] /.test(t) || /^\d+\.\s/.test(t)) {
-      if (buf.length && !/^[-*+] /.test(buf[0].trim()) && !/^\d+\.\s/.test(buf[0].trim())) flush();
-      buf.push(l); continue;
-    }
-    if (buf.length && (/^[-*+] /.test(buf[0].trim()) || /^\d+\.\s/.test(buf[0].trim()))) flush();
-    // Blockquote >
-    if (t.startsWith('>')) {
-      if (buf.length && !buf[0].trim().startsWith('>')) flush();
-      buf.push(l); continue;
-    }
-    if (buf.length && buf[0].trim().startsWith('>')) flush();
-    buf.push(l);
-  }
-  flush();
-  return blocks;
-}
-
-function joinMdBlocks(blocks) { return blocks.join('\n\n'); }
 
 /* ===== TABLE CELL PIPE ESCAPE/UNESCAPE ===== */
 const PIPE_PLACEHOLDER = '\x00PIPE\x00';
