@@ -439,18 +439,6 @@ function safeDownloadBlob(blob, filename) {
   }
 }
 
-/* ===== INJECT MARKS ===== */
-function injectMarksToMd(content, marks) {
-  if (!marks || !marks.length) return content;
-  const blocks = splitMdBlocks(content);
-  const result = [];
-  blocks.forEach((block, bi) => {
-    result.push(block);
-    const bm = marks.filter(m => m.blockId === 'block-' + bi);
-    bm.forEach(m => { result.push('<!-- [審核問題] ' + m.issue.replace(/-->/g, '—>') + ' -->'); });
-  });
-  return result.join('\n\n');
-}
 
 /* ===== MARK POPUP ===== */
 // Remap block-level marks ('block-<n>') when blocks are inserted, removed, or
@@ -3863,7 +3851,7 @@ export default function MdReviewer() {
     
     if (downloadModal.type === 'md') {
       const f = downloadModal.file;
-      safeDownload(injectMarksToMd(f.content, f.marks), name, 'text/markdown;charset=utf-8');
+      safeDownload(buildAnnotatedMd(f.content, f.marks), name, 'text/markdown;charset=utf-8');
     } else if (downloadModal.type === 'zip') {
       // Zip download logic moved here if needed, or keep separate
     }
@@ -3873,7 +3861,7 @@ export default function MdReviewer() {
   const downloadZip = () => {
     const done = files.filter(f => f.status === 'done');
     if (!done.length) { alert('請先將檔案標記為「已完成」再下載 ZIP'); return; }
-    safeDownloadBlob(createZip(done.map(f => ({ name: f.name, content: injectMarksToMd(f.content, f.marks) }))), '已審核_' + new Date().toISOString().slice(0, 10) + '.zip');
+    safeDownloadBlob(createZip(done.map(f => ({ name: f.name, content: buildAnnotatedMd(f.content, f.marks) }))), '已審核_' + new Date().toISOString().slice(0, 10) + '.zip');
   };
 
 
