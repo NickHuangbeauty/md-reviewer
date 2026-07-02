@@ -2442,14 +2442,16 @@ function TourGuide({ steps, onClose }) {
 
   // Measure the target (with retries — it may still be mounting, e.g. after a demo file loads).
   useLayoutEffect(() => {
-    let raf, tries = 0, alive = true;
+    let raf, tries = 0, alive = true, tagged = null;
+    // Reveal hover-only affordances (e.g. the 🚩 mark-flag) while the tour points at them.
+    const tag = (el) => { if (el && el !== tagged) { if (tagged) tagged.classList.remove('tour-target'); el.classList.add('tour-target'); tagged = el; } };
     const measure = () => {
       if (!alive) return;
       if (!step.sel) { setRect(null); return; }
       const el = document.querySelector(step.sel);
       if (el) {
         const r = el.getBoundingClientRect();
-        if (r.width || r.height) { setRect({ top: r.top, left: r.left, width: r.width, height: r.height }); return; }
+        if (r.width || r.height) { tag(el); setRect({ top: r.top, left: r.left, width: r.width, height: r.height }); return; }
       }
       if (tries++ < 30) raf = requestAnimationFrame(measure); else setRect(null);
     };
@@ -2457,7 +2459,7 @@ function TourGuide({ steps, onClose }) {
     const onWin = () => { const el = step.sel && document.querySelector(step.sel); const r = el && el.getBoundingClientRect(); setRect(r && (r.width || r.height) ? { top: r.top, left: r.left, width: r.width, height: r.height } : null); };
     window.addEventListener('resize', onWin);
     window.addEventListener('scroll', onWin, true);
-    return () => { alive = false; cancelAnimationFrame(raf); window.removeEventListener('resize', onWin); window.removeEventListener('scroll', onWin, true); };
+    return () => { alive = false; cancelAnimationFrame(raf); if (tagged) tagged.classList.remove('tour-target'); window.removeEventListener('resize', onWin); window.removeEventListener('scroll', onWin, true); };
   }, [step.sel]);
 
   useEffect(() => {
@@ -3966,9 +3968,10 @@ export default function MdReviewer() {
     .preview-block:hover{background:var(--surface2);border-color:var(--border)}
     .preview-block.marked{border-left:3px solid var(--danger);background:var(--danger-bg)}
     .mark-badge{position:absolute;top:4px;right:4px;display:flex;align-items:center;gap:3px;padding:2px 8px;background:var(--danger);color:white;border-radius:12px;font-size:11px;font-weight:500;cursor:pointer;box-shadow:var(--shadow)}
-    .mark-flag{position:absolute;top:4px;right:6px;opacity:.28;transition:opacity .12s,border-color .12s,background .12s;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:0 6px;font-size:13px;line-height:1.7;cursor:pointer;z-index:6}
-    .block-wrapper:hover .mark-flag{opacity:.92}
-    .mark-flag:hover{opacity:1;border-color:#fca5a5;background:#fef2f2}
+    .mark-flag{position:absolute;top:4px;right:6px;opacity:0;pointer-events:none;transition:opacity .12s,border-color .12s,background .12s;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:0 6px;font-size:13px;line-height:1.7;cursor:pointer;z-index:6}
+    .block-wrapper:hover .mark-flag{opacity:.55;pointer-events:auto}
+    .block-wrapper:hover .mark-flag:hover{opacity:1;border-color:#fca5a5;background:#fef2f2}
+    .mark-flag.tour-target{opacity:1;pointer-events:auto}
     .sel-mark-btn{display:flex;align-items:center;gap:4px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:70;animation:ftIn .12s ease}
     .copy-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:12.5px;font-weight:600;z-index:140;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:ftIn .15s ease}
     .edit-block{padding:4px 0}
