@@ -1,8 +1,12 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
-import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History, GraduationCap } from 'lucide-react';
+import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History, GraduationCap, Package } from 'lucide-react';
 import { RELEASES, CURRENT_VERSION } from './releases.js';
 import { splitMdBlocks, joinMdBlocks } from './mdBlocks.js';
 import { buildAnnotatedMd, buildLlmPrompt } from './llmExport.js';
+import { assembleReviewPackage } from './reviewGuide.js';
+import reviewProtocolFull from './review-assets/審核協議-完整.md?raw';
+import reviewChecklistSingle from './review-assets/審核checklist-單檔.md?raw';
+import reviewReadme from './review-assets/README.md?raw';
 import { useFeatureFlag, fetchRemoteFlags, getAllFlags } from './featureFlags.js';
 import { initEmbedApi } from './embedApi.js';
 import { computeDiffStats } from './diffStats.js';
@@ -3871,6 +3875,20 @@ export default function MdReviewer() {
     } catch { setCopyToast({ text }); }
   }, [activeFile]);
 
+  const downloadReviewPackage = useCallback(() => {
+    if (!activeFile) return;
+    const files = assembleReviewPackage({
+      fileName: activeFile.name,
+      annotatedMd: buildAnnotatedMd(activeFile.content, activeFile.marks),
+      protocolFull: reviewProtocolFull,
+      checklistSingle: reviewChecklistSingle,
+      readme: reviewReadme,
+    });
+    const base = activeFile.name.replace(/\.[^.]+$/, '');
+    const zipName = '審核包_' + base + '_' + new Date().toISOString().slice(0, 10) + '.zip';
+    safeDownloadBlob(createZip(files), zipName);
+  }, [activeFile]);
+
   const confirmDownload = (name) => {
     if (!downloadModal) return;
     
@@ -4367,6 +4385,7 @@ export default function MdReviewer() {
             <div className="w-px h-5 bg-gray-200 mx-1" />
             <button onClick={copyLlmPrompt} disabled={!activeFile || !activeFile.marks.length} className="tbtn tbtn-violet" title="複製給 LLM review 的提示詞（含標記與內文）"><Clipboard className="w-3.5 h-3.5" />複製 LLM 提示</button>
             <button onClick={() => { if (activeFile) downloadFile(activeFile); }} data-tour="download" disabled={!activeFile} className="tbtn tbtn-blue" title="下載 .md(含標記)"><Download className="w-3.5 h-3.5" />下載 MD</button>
+            <button onClick={downloadReviewPackage} disabled={!activeFile} className="tbtn tbtn-gray" title="下載審核包（給 codex/AI 做交付審定的 ZIP：審核後.md + 協議 + checklist + README）"><Package className="w-3.5 h-3.5" />下載審核包</button>
             <button onClick={downloadZip} disabled={!doneCount} className="tbtn tbtn-green" title="ZIP 下載已完成檔案"><FolderDown className="w-3.5 h-3.5" />全部 ZIP ({doneCount})</button>
           </div>
         </div>
