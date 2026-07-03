@@ -119,46 +119,61 @@ ZIP 檔名：`審核包_<檔名去副檔名>_<YYYY-MM-DD>.zip`
 gate PASS 前不准宣稱可交付。
 ```
 
-### `審核checklist-單檔.md`（草案，md-reviewer 單檔版）
+### `審核checklist-單檔.md`（草案，md-reviewer 單檔版 — 對齊真實 pipeline 詞彙）
+
+> 依真實交付包 `C公司…full_source_md_adjudicated`（00_gate.json / 00_report.md / final_corrected_md）對齊：final MD 乾淨不留註解、狀態/檢查用其詞彙、report 用其結構。本單檔版 = 完整協議的「一份文件 = 一個 unit」縮小版。
 
 ```
-# 審核 checklist —— md-reviewer 單檔版
+# 審核 checklist —— md-reviewer 單檔版（source-vs-MD 交付審定 · 單文件）
 
-適用：只有這個審核包（審核後.md +（選配）來源 PDF），不需 viewer/manifest/hash 管線。
-目標：對這一份文件做逐段（block）source-vs-MD 比對，修到完整，gate PASS 才算可交付。
+適用：只有這個審核包（審核後.md +（選配）來源 PDF），不需完整 viewer/manifest/hash 管線。
+定位：本文件相當於完整協議裡「一份文件」；這份 MD 的每個頁/段 = 一個 source unit。
 
 ## 步驟
-1. 讀 審核後.md。若資料夾內有來源 PDF，以 PDF 為左側「原始文件」；沒有則就 MD 內文自證明顯瑕疵。
-2. 把 審核後.md 依標題/段落切成 blocks，對每個 block 建一列 ledger：
-   | # | block 位置/引文 | 狀態 | 比對發現 | 修正 |
-3. 逐 block 比對：
+1. 讀 審核後.md。審核後.md 內的 <!-- [審核問題 #n] --> 是 BU 的既有標記（輸入），要逐一查證。
+   若資料夾內有來源 PDF/圖，以它為左側「原始文件」；沒有則就 MD 內文判斷明顯瑕疵。
+2. 依頁錨（## p.N）或標題/段落切成 source units，對每個 unit 建一列 ledger：
+   | # | unit(頁/段·引文) | 狀態 | 比對發現 | 修正動作 |
+3. 逐 unit 比對：
    - 文字是否遺漏或多出
    - 表格欄列、合併儲存格（rowspan/colspan）是否正確
-   - 符號/編號/註腳/標題/段落是否正確
-   - 是否出現來源不存在的內容（例如 |||、亂碼、頁首頁尾殘留）
-   - 句子是否被截斷、段落是否被錯拆或錯併
-   - 既有的 <!-- [審核問題 #n] --> 標記是否成立，補說明與修正
-4. 每個 block 狀態只能是：
-   CLEAN / FIXED（已修完整 MD）/ SOURCE_LIMITED（無來源可辨識，不猜）/
-   NEEDS_REPAIR（尚未修完，不可交付）/ UNREVIEWED（尚未審，不可交付）
-5. 發現問題：修「完整 MD」，不是片段；修完把整份 corrected MD 一起輸出。
+   - 符號/編號/註腳/標題/段落/頁序/跨頁延續是否正確
+   - 圖片/流程圖/Mermaid 判斷是否合理
+   - 是否出現來源不存在的內容：`|||`（long_pipe）、亂碼／替換字 ﹅（replacement_chars）、
+     raw JSON 殘留（raw_json）、壞掉的圖片引用（broken_img_refs）、頁首頁尾殘留
+   - 既有 <!-- [審核問題 #n] --> 是否成立，補說明與修正
+4. 每個 unit 狀態（對齊真實 verdict）：
+   ADJUDICATED_CLEAN（已比對無需修）
+   ADJUDICATED_FIXED（有問題，已修完整 MD；可加後綴如 _RENDERER_TABLE / _MERMAID_PRESERVED）
+   ADJUDICATED_CLEAN_SOURCE_LIMITED（來源不可辨識，不猜測、保留並註明）
+   NEEDS_REPAIR（發現問題但尚未修完 → 不可交付）
+   UNREVIEWED（尚未審 → 不可交付）
+   BLOCKED（無法交付，需明確原因）
+5. 發現問題：修「完整 MD」，不是片段。修完輸出**乾淨的** corrected MD
+   —— 移除所有 <!-- [審核問題 #n] --> 與工具/reviewer 補充註解；審定結果只放在下方 report，不留在 MD 內。
 
 ## 單檔 gate（PASS 才算可交付）
-- ledger 列數 == 文件 block 數
-- UNREVIEWED = 0
-- NEEDS_REPAIR = 0
-- 每個標記都已查證（成立/不成立都要寫）
+- ledger 列數 == source units 數（每頁/段都有一列）
+- UNREVIEWED = 0、NEEDS_REPAIR = 0、BLOCKED = 0
+- long_pipe(`|||`) = 0、replacement_chars = 0、raw_json_artifacts = 0、broken_img_refs = 0
+- 每個既有標記都已查證（成立/不成立都要寫）
+- 最終 corrected MD 內無任何 <!-- --> 註解殘留
 
 ## 嚴禁
 - 抽查幾段就說整份完成
 - 只回報問題卻不修完整 MD
-- 口頭「我看過」而無 ledger
+- 口頭「我看過」而無 ledger／證據
+- 把含 UNREVIEWED / NEEDS_REPAIR / BLOCKED 的內容當可交付
 
-## 輸出
-1. 全量 block ledger
-2. 修正後的完整 corrected MD
-3. before/after 證據
-4. gate 結果（UNREVIEWED=0 / NEEDS_REPAIR=0）
+## 輸出（對齊真實 report 結構）
+1. **審定報告**（markdown）：
+   - metadata：產生時間 / 協議 / source units / ledger rows / delivery status
+   - Gate 摘要：逐項 PASS/FAIL（ledger_rows_equal_units、long_pipe_zero、replacement_chars_zero…）
+   - Ledger 狀態：UNREVIEWED / NEEDS_REPAIR / BLOCKED 各幾列
+   - 全量 unit ledger 表（# / unit / 狀態 / 發現 / 修正）
+2. 修正後的**乾淨完整 corrected MD**（無 <!-- --> 註解）
+3. before/after 證據（改了哪些 unit、原→修）
+4. gate 結果（UNREVIEWED=0 / NEEDS_REPAIR=0 / BLOCKED=0）
 5. 未完成/不可交付清單；若無，明確寫 0
 ```
 
@@ -184,9 +199,13 @@ gate PASS 前不准宣稱可交付。
 4. AI 逐段比對、找出你可能漏掉的、修成完整 MD，並給 gate 結果。
 5. 看 AI 的清單，確認後採用修正版，或回 md-reviewer 補標。
 
+## AI 產出約定（重要）
+- 最終 corrected MD 必須**乾淨**：移除所有 <!-- [審核問題 #n] --> 與工具註解；審定結果放在「審定報告」，不留在 MD 內。
+- 這一份審核包 = 你完整交付管線裡的「一份文件」。完整管線（00_gate.json / 00_report.md / final_corrected_md / manifest / hash / viewer）由「審核協議-完整.md」規範。
+
 ## 注意
 - 沒放來源 PDF 時，AI 只能就 MD 本身找明顯瑕疵（亂碼/表格錯位/|||/截斷），無法保證抓到所有與原文的差異。
-- gate PASS（UNREVIEWED=0 / NEEDS_REPAIR=0）前，不要當作已交付。
+- gate PASS（UNREVIEWED=0 / NEEDS_REPAIR=0 / BLOCKED=0）前，不要當作已交付。
 ```
 
 ## 元件與職責
@@ -239,7 +258,8 @@ export function buildReviewPackage(file) {
 - 直接 `fs.readFileSync` 三份 `src/review-assets/*.md` 驗關鍵句：
   - 協議含「全量 source-vs-MD 交付審定協議」「delivery gate」「ledger_rows == source_units」「gate PASS 前不准宣稱可交付」
   - 單檔版含「單檔 gate」「UNREVIEWED = 0」「NEEDS_REPAIR = 0」
-  - README 含「把真正的來源文件」「依 審核協議-完整.md」
+  - README 含「把真正的來源文件」「依 審核協議-完整.md」「最終 corrected MD 必須乾淨」
+  - 單檔版含真實 verdict 詞彙「ADJUDICATED_CLEAN」「ADJUDICATED_FIXED」與檢查「long_pipe」「replacement_chars」
 - 無標記時 annotatedMd = 乾淨 corrected MD（沿用 llmExport 行為）→ 仍組出 4 檔
 
 BDD（≥6，canary 亮+暗）：
