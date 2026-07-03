@@ -6,6 +6,13 @@
 
 export const RELEASES = [
   {
+    version: '1.5.0',
+    date: '2026-07-02',
+    added: [
+      '「下載審核包」：一鍵打包 ZIP（審核後.md + 交付審定協議 + 單檔 checklist + README），拿到自己的 codex/VSCode 讓 AI 做 source-vs-MD 逐頁比對、找出漏掉的、修到完整、跑交付 gate',
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-07-01',
     added: [
