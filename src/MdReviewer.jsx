@@ -3884,7 +3884,7 @@ export default function MdReviewer() {
       checklistSingle: reviewChecklistSingle,
       readme: reviewReadme,
     });
-    const base = activeFile.name.replace(/\.[^.]+$/, '');
+    const base = activeFile.name.replace(/\.[^.]+$/, '') || activeFile.name;
     const zipName = '審核包_' + base + '_' + new Date().toISOString().slice(0, 10) + '.zip';
     safeDownloadBlob(createZip(files), zipName);
   }, [activeFile]);
