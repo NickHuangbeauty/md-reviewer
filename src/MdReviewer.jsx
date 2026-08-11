@@ -4,6 +4,7 @@ import { RELEASES, CURRENT_VERSION } from './releases.js';
 import { splitMdBlocks, joinMdBlocks, remapMarksByContent } from './mdBlocks.js';
 import { buildAnnotatedMd, buildLlmPrompt } from './llmExport.js';
 import { assembleReviewPackage } from './reviewGuide.js';
+import { DEMO_DOCS } from './demoDocs.js';
 import reviewProtocolFull from './review-assets/審核協議-完整.md?raw';
 import reviewChecklistSingle from './review-assets/審核checklist-單檔.md?raw';
 import reviewReadme from './review-assets/README.md?raw';
@@ -2431,7 +2432,7 @@ const TOUR_STEPS = [
   { sel: '[data-tour="mark"]', title: '⑤ 標記問題（超簡單）', body: '滑鼠移到段落會浮出 🚩，點一下就標好；也可以先選取某句話再點「🚩 標記」。問題描述可留空。這些標記會寫進你下載的 MD，配上「複製 LLM 提示」直接丟給 LLM，就能產出問題清單、取代截圖+Excel。' },
   { sel: '[data-tour="download"]', title: '⑥ 下載與備份', body: '改完點「下載 MD」拿到含標記的檔案；「匯出狀態」可備份整個審核進度，下次用「匯入狀態」接續。' },
   { sel: '.ver-badge', title: '⑦ 更新日誌', body: '右上角版號點下去，可以看每個版本改了什麼、新增了什麼功能。' },
-  { sel: null, title: '完成 🎉', body: '就這些！左側那份「示範文件」可以隨時用「移除」刪掉。之後想重看，右上角「使用教學」隨時再帶你一次。' },
+  { sel: null, title: '完成 🎉', body: '左側幫你載了 10 份示範文件，涵蓋流程圖、甘特圖、統計圖表、複雜合併表格、數學公式，而且每份都埋了真實的解析瑕疵（多餘符號、表格缺格、句子截斷、亂碼…）——正好拿來練習標記。不需要時用「移除」刪掉即可。之後想重看，右上角「使用教學」隨時再帶你一次。' },
 ];
 
 // Spotlight guided tour — dims the screen, highlights each real element with a bubble.
@@ -3505,11 +3506,14 @@ export default function MdReviewer() {
 
   // === Guided tour (使用教學) ===
   const TOUR_SEEN_KEY = 'md-reviewer-tour-seen';
-  const TOUR_DEMO = '# 火災保險投保須知（示範文件）\n\n本文件為教學示範，可隨時在左側清單「移除」。\n\n## 承保範圍\n\n| 項目 | 說明 |\n| --- | --- |\n| 建築物 | 主體結構、裝潢 |\n| 動產 | 室內設備、存貨 |\n\n- 保險金額不得超過重置成本\n- 理賠採實損實賠原則\n';
   const startTour = useCallback(() => {
     setShowReleases(false);
     setShowDashboard(false);
-    if (filesRef.current.length === 0) importFiles([{ name: '示範文件.md', content: TOUR_DEMO }]);
+    // Load the 10-document demo set so the tour has rich, realistic material to
+    // point at (flowcharts, gantt, charts, merged tables, formulas — plus planted
+    // parsing defects to mark). Only when the user has nothing open, so we never
+    // clobber real work.
+    if (filesRef.current.length === 0) importFiles(DEMO_DOCS.map(d => ({ name: d.name, content: d.content })));
     setViewMode('preview');
     setShowTour(true);
   }, [importFiles]);

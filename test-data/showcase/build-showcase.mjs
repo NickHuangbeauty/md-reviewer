@@ -556,7 +556,14 @@ const state = { version: 1, exportedAt: new Date().toISOString(), files: clean }
 mkdirSync(here, { recursive: true });
 writeFileSync(join(here, 'showcase-10-cases.json'), JSON.stringify(state, null, 2));
 clean.forEach(f => writeFileSync(join(here, f.name), f.content));
+
+// The app bundles these as the 使用教學 demo set (src/demoDocs.js picks them up
+// with import.meta.glob), so this script is the single source of truth for both
+// the in-app demo and the manually-importable JSON.
+const appAssets = join(here, '..', '..', 'src', 'demo-assets');
+mkdirSync(appAssets, { recursive: true });
+clean.forEach(f => writeFileSync(join(appAssets, f.name), f.content));
 writeFileSync(join(here, 'README.md'), `# md-reviewer 複雜案例展示包（10 件）\n\n用 md-reviewer 的「匯入狀態」載入 \`showcase-10-cases.json\` 即可一次取得全部 10 份。\n\n每份都同時做到：**展示渲染能力** + **內含真實解析瑕疵供審核**。\n\n${notes}\n`);
 
-console.log('✅ 產出完成：' + clean.length + ' 份');
+console.log('✅ 產出完成：' + clean.length + ' 份（test-data/showcase/ + src/demo-assets/）');
 console.log(notes);
