@@ -1,4 +1,5 @@
 import { blockQuote, buildAnnotatedMd, buildLlmPrompt } from '../src/llmExport.js';
+import { splitMdBlocks } from '../src/mdBlocks.js';
 let pass = 0, fail = 0;
 const check = (n, c) => { if (c) { pass++; console.log('  ✅ ' + n); } else { fail++; console.log('  ❌ ' + n); } };
 
@@ -49,6 +50,29 @@ console.log('buildAnnotatedMd:');
   // orphan mark (blockId out of range) still appears, numbered, at the end
   const out = buildAnnotatedMd('一段', [{ blockId: 'block-99', issue: '孤兒' }]);
   check('orphan mark rendered and numbered', /#1\][^\n]*孤兒 -->/.test(out) && out.includes('本檔含 1 處'));
+  check('orphan without quote gets 位置未知 anchor, not empty 「」', out.includes('位置未知') && !out.includes('段落:「」'));
+  // legacy cell-level id (not block-<n>) is also an orphan
+  const legacy = buildAnnotatedMd('一段', [{ blockId: 'cell-2-3', issue: '舊格式' }]);
+  check('legacy cell-id orphan anchored, not empty', legacy.includes('位置未知') && !legacy.includes('段落:「」'));
+  // an orphan WITH a user selection still uses that quote (it is locatable)
+  const oq = buildAnnotatedMd('一段', [{ blockId: 'block-99', issue: 'x', quote: '選到的字' }]);
+  check('orphan with quote keeps the quote as anchor', oq.includes('段落:「選到的字」') && !oq.includes('位置未知'));
+}
+{
+  // REGRESSION: multi-line issue/quote must not break the single-line comment.
+  // A newline would split <!-- ... --> across blocks (splitMdBlocks breaks on blank
+  // lines), leaking `… -->` as visible text and shifting later block indices.
+  const md = 'A 段\n\nB 段\n\nC 段';
+  const out = buildAnnotatedMd(md, [{ blockId: 'block-1', issue: '這裡數字錯了\n\n而且單位也不對' }]);
+  const blocks = splitMdBlocks(out);
+  const leaked = blocks.some(b => !b.startsWith('<!--') && b.includes('-->'));
+  check('multi-line issue collapsed → comment stays on one line', !leaked);
+  check('multi-line issue text preserved (space-joined)', out.includes('這裡數字錯了 而且單位也不對'));
+  const outQ = buildAnnotatedMd(md, [{ blockId: 'block-1', issue: 'x', quote: '第一行\n第二行' }]);
+  check('multi-line quote collapsed too', !splitMdBlocks(outQ).some(b => !b.startsWith('<!--') && b.includes('-->')));
+  // round-trip: re-parsing the export must not gain stray body blocks
+  const clean = buildAnnotatedMd(md, [{ blockId: 'block-1', issue: '單行沒問題' }]);
+  check('single-line issue unaffected', !splitMdBlocks(clean).some(b => !b.startsWith('<!--') && b.includes('-->')));
 }
 
 console.log('buildLlmPrompt:');

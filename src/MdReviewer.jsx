@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Download, Upload, FileText, X, AlertCircle, AlertTriangle, Trash2, Edit, Check, Wand2, Plus, CheckCircle2, Circle, FolderDown, FileUp, FileDown, Clipboard, Code, Eye, Bold, Italic, Strikethrough, Link, Heading1, Heading2, Heading3, List, Minus, Quote, Table, GripVertical, Type, Copy, ArrowUp, ArrowDown, ListTree, ChevronRight, PanelRightClose, GitCompare, BarChart3, Sun, Moon, Sparkles, History, GraduationCap, Package } from 'lucide-react';
 import { RELEASES, CURRENT_VERSION } from './releases.js';
-import { splitMdBlocks, joinMdBlocks } from './mdBlocks.js';
+import { splitMdBlocks, joinMdBlocks, remapMarksByContent } from './mdBlocks.js';
 import { buildAnnotatedMd, buildLlmPrompt } from './llmExport.js';
 import { assembleReviewPackage } from './reviewGuide.js';
 import reviewProtocolFull from './review-assets/審核協議-完整.md?raw';
@@ -3425,6 +3425,19 @@ export default function MdReviewer() {
   const [selMark, setSelMark] = useState(null); // { x, y, blockId, quote } — select-text-to-mark
   const [copyToast, setCopyToast] = useState(null); // 'ok' | { text } (fallback)
   const [srcShowMarks, setSrcShowMarks] = useState(true); // 原始碼: show annotated (marks) vs editable clean
+  // The floating 🚩 標記 button is anchored to a selection in ONE file's preview. If it
+  // outlives that context (file switch / view switch / clicking elsewhere) its stale
+  // blockId would land the mark on the WRONG file. Clear it aggressively.
+  useEffect(() => { setSelMark(null); }, [activeId, viewMode]);
+  useEffect(() => {
+    if (!selMark) return;
+    const onDown = (e) => {
+      if (e.target && e.target.closest && e.target.closest('.sel-mark-btn')) return; // let the click through
+      setSelMark(null);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [selMark]);
   const [tocWidth, setTocWidth] = useState(220);
   const tocDragRef = useRef(null);
   const importRef = useRef(null);
@@ -3874,6 +3887,19 @@ export default function MdReviewer() {
       setCopyToast('ok'); setTimeout(() => setCopyToast(c => (c === 'ok' ? null : c)), 1800);
     } catch { setCopyToast({ text }); }
   }, [activeFile]);
+
+  // Raw-source editing can add/remove blocks, which would silently shift every
+  // positional mark ('block-<n>') onto the wrong block — the invariant onBlockAction
+  // maintains for structured edits. Re-anchor by block text when the block count moves.
+  const onSourceChange = useCallback((val) => {
+    if (!activeFile) return;
+    const patch = { content: val };
+    if (activeFile.marks.length &&
+        splitMdBlocks(activeFile.content).length !== splitMdBlocks(val).length) {
+      patch.marks = remapMarksByContent(activeFile.content, val, activeFile.marks);
+    }
+    updateFile(activeFile.id, patch);
+  }, [activeFile, updateFile]);
 
   const downloadReviewPackage = useCallback(() => {
     if (!activeFile) return;
@@ -4472,10 +4498,10 @@ export default function MdReviewer() {
                   </div>
                   {srcShowMarks
                     ? <SourceEditor value={buildAnnotatedMd(activeFile.content, activeFile.marks)} readOnly />
-                    : <SourceEditor value={activeFile.content} onChange={val=>updateFile(activeFile.id,{content:val})} />}
+                    : <SourceEditor value={activeFile.content} onChange={onSourceChange} />}
                 </div>
               ) : (
-              <SourceEditor value={activeFile.content} onChange={val=>updateFile(activeFile.id,{content:val})} />
+              <SourceEditor value={activeFile.content} onChange={onSourceChange} />
               )
 
             ) : viewMode==='diff' ? (
@@ -4546,7 +4572,9 @@ export default function MdReviewer() {
                   <span className="text-xs text-gray-400 shrink-0">標記:</span>
                   {activeFile.marks.map((m,i)=>(
                     <span key={m.blockId+'-'+i} onClick={()=>setPopup({blockId:m.blockId,position:{x:window.innerWidth/2,y:window.innerHeight/3},mark:m})} className="shrink-0 px-2 py-0.5 bg-red-50 text-red-600 rounded border border-red-100 text-xs cursor-pointer hover:bg-red-100">
-                      #{i+1}: {m.issue.slice(0,15)}{m.issue.length>15?'...':''}
+                      {/* descriptions are optional since v1.4.0 — show a placeholder
+                          instead of a blank chip, matching MarkPopup/buildAnnotatedMd */}
+                      #{i+1}: {(m.issue||'').trim() ? m.issue.slice(0,15) + (m.issue.length>15?'...':'') : '（未填述）'}
                     </span>))}
                 </div>
               </div>

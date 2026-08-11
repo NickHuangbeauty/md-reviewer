@@ -23,12 +23,23 @@ function markNumberMap(marks) {
   return byBlock;
 }
 
+// Annotations and summary lines are SINGLE-LINE templates. Any newline in user text
+// would split the <!-- ... --> comment across blocks (splitMdBlocks breaks on blank
+// lines), leaking `… -->` as visible body text and shifting every later block index.
+// So collapse all whitespace runs to a single space.
+const oneLine = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
 function quoteOf(mark, blockText) {
-  return escapeComment(mark.quote && mark.quote.trim() ? mark.quote.trim() : blockQuote(blockText));
+  const q = mark.quote && mark.quote.trim() ? oneLine(mark.quote) : blockQuote(blockText);
+  return escapeComment(oneLine(q));
 }
 function issueOf(mark) {
-  return escapeComment(mark.issue && mark.issue.trim() ? mark.issue.trim() : EMPTY_ISSUE);
+  return escapeComment(mark.issue && mark.issue.trim() ? oneLine(mark.issue) : EMPTY_ISSUE);
 }
+// Anchor text for a mark whose blockId no longer resolves to a block (legacy
+// cell-level ids from old imports, or an out-of-range index). Never emit an empty
+// 「」 — the LLM needs something locatable.
+const orphanAnchor = (mark) => `(位置未知·${oneLine(mark.blockId) || '無id'})`;
 
 // Annotate the markdown: inline anchored comments after each marked block, plus a
 // leading header. `header` controls that leading block:
@@ -48,9 +59,14 @@ export function buildAnnotatedMd(content, marks, opts = {}) {
   let n = 0;
   const summary = [];
   const out = [];
-  const emit = (m, blockText) => {
+  const emit = (m, blockText, orphan) => {
     n += 1;
-    const q = quoteOf(m, blockText), i = issueOf(m);
+    // An orphan still has a locatable anchor if the user selected text when marking;
+    // only fall back to the 位置未知 hint when there is no quote either.
+    const q = (orphan && !(m.quote && m.quote.trim()))
+      ? escapeComment(orphanAnchor(m))
+      : quoteOf(m, blockText);
+    const i = issueOf(m);
     out.push(`<!-- [審核問題 #${n}] 段落:「${q}」｜問題:${i} -->`);
     summary.push(`    #${n}「${q}」— ${i}`);
   };
@@ -58,10 +74,11 @@ export function buildAnnotatedMd(content, marks, opts = {}) {
     out.push(b);
     (byBlock['block-' + bi] || []).forEach(m => emit(m, b));
   });
-  // Orphan marks (blockId out of range / not 'block-<n>') appended at the end.
+  // Orphan marks (blockId out of range / not 'block-<n>') appended at the end,
+  // anchored with a "位置未知" hint rather than an empty 「」.
   marks.forEach(m => {
     const mi = /^block-(\d+)$/.exec(m.blockId || '');
-    if (!mi || parseInt(mi[1], 10) > maxIdx) emit(m, '');
+    if (!mi || parseInt(mi[1], 10) > maxIdx) emit(m, '', true);
   });
 
   const body = joinMdBlocks(out);
